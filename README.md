@@ -44,32 +44,31 @@ Windows 11이면 `winget`(앱 설치 관리자)이 기본 탑재돼 있다. (`wi
 ```powershell
 winget install --id Microsoft.PowerShell -e
 ```
-설치 후 **`pwsh`**(PowerShell 7)를 새로 실행하고, **이 아래 모든 명령은 pwsh에서** 진행한다.
+설치 후 **`pwsh`**(PowerShell 7)를 실행하고, **이 아래 모든 명령은 pwsh에서** 진행한다.
 
-**② Node.js(LTS) 설치** — pwsh에서:
+**② 필수 도구 설치** — pwsh에서 Git · Node.js · OBS:
 ```powershell
+winget install --id Git.Git -e
 winget install --id OpenJS.NodeJS.LTS -e
-```
-설치 후 **새 pwsh 창**을 열어(PATH 갱신) 확인:
-```powershell
-node -v
-```
-
-**③ pnpm 활성화** — Node에 포함된 corepack 사용:
-```powershell
-corepack enable pnpm
-pnpm -v
-```
-(안 되면: `npm install -g pnpm`)
-
-**④ OBS Studio 설치**:
-```powershell
 winget install --id OBSProject.OBSStudio -e
 ```
 
-**⑤ 브라우저**: Microsoft **Edge**는 Windows에 기본 설치돼 있어 별도 설치 불필요 (`BROWSER=msedge` 사용).
+**③ 새 pwsh 창을 열고**(방금 설치한 것들 PATH 반영) 확인 + pnpm 활성화:
+```powershell
+git --version
+node -v
+corepack enable pnpm      # Node 내장. 안 되면: npm install -g pnpm
+pnpm -v
+```
 
-> 이 저장소를 git으로 받을 거면: `winget install --id Git.Git -e`
+**④ 저장소 받기(clone)** — 코드를 둘 위치에서:
+```powershell
+git clone https://github.com/kwop9296-lab/video-recorder.git
+cd video-recorder
+```
+public 저장소라 인증 없이 받아진다. **이후 모든 명령은 이 `video-recorder` 폴더 안에서** 실행한다.
+
+**⑤ 브라우저**: Microsoft **Edge**는 Windows에 기본 설치돼 있어 별도 설치 불필요 (`BROWSER=msedge` 사용).
 
 ### 1) 프로젝트 의존성 설치
 프로젝트 폴더에서:
