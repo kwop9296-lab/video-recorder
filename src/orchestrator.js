@@ -16,7 +16,7 @@ import { notifyDone, notifyFail, notifyLogin, notifyStopped } from './core/notif
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export async function run(catalogName) {
+export async function run(catalogName, { reverse = false } = {}) {
   if (!config.drive.rootFolder) throw new Error('GDRIVE_ROOT 미설정 — .env 에 GDRIVE_ROOT 를 지정하세요.');
   const items = await loadCatalog(catalogName);
   if (!items.length) { log(`catalog '${catalogName}' 이 비어있음. 먼저 pnpm urls 로 채우세요.`); return; }
@@ -35,7 +35,9 @@ export async function run(catalogName) {
   const todo = config.force
     ? items.filter((i) => i.skip !== 'novideo')
     : items.filter((i) => !doneIds.has(i.id) && i.skip !== 'novideo');
-  log(`📋 '${catalogName}': 총 ${items.length} · 완료 ${doneIds.size} · 영상없음 ${novideoN} · 남음 ${todo.length}${config.force ? ' · [FORCE]' : ''}`);
+  // 아래에서부터 녹화(두 PC로 위/아래 분담 시). 완료 필터는 그대로, 순회 방향만 뒤집는다.
+  if (reverse) todo.reverse();
+  log(`📋 '${catalogName}': 총 ${items.length} · 완료 ${doneIds.size} · 영상없음 ${novideoN} · 남음 ${todo.length}${config.force ? ' · [FORCE]' : ''}${reverse ? ' · [역순]' : ''}`);
   if (!todo.length) { log('할 일 없음.'); return; }
 
   const context = await launchSession();
@@ -67,6 +69,12 @@ export async function run(catalogName) {
 
   for (const [i, v] of todo.entries()) {
     if (stopping) break;
+    // 항목별 재확인 — 다른 PC(반대 방향)가 방금 올렸으면 스킵. 위/아래가 중간에서 만나도 중복 녹화 방지.
+    if (!config.force && await drive.findByContentId(folderId, v.id)) {
+      doneIds.add(v.id);
+      log(`[${i + 1}/${todo.length}] ⏭ 이미 완료(다른 PC) — ${v.title || v.url}`);
+      continue;
+    }
     log(`\n[${i + 1}/${todo.length}] ${v.title || v.url}`);
     try {
       const r = await recordOne(page, bus, obs, v);

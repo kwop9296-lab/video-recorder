@@ -145,7 +145,7 @@ pnpm start no1-stock
 | 명령 | 설명 |
 |---|---|
 | `pnpm urls "<URL>" <catalog>` | 카테고리 목록 → catalog 병합 (제목+URL, ✅/⬜ 표시) |
-| `pnpm start [catalog]` | catalog의 미완료 녹화 → 드라이브 업로드 (catalog 하나면 이름 생략 가능) |
+| `pnpm start [catalog] [reverse]` | catalog의 미완료 녹화 → 드라이브 업로드 (catalog 하나면 이름 생략 가능). `reverse`(=`-r`/`desc`): 아래에서부터 녹화 |
 | `pnpm obs:check [--rec]` | OBS 연결/해상도 확인 (`--rec`: 5초 테스트 녹화) |
 | `pnpm setup:window "<URL>"` | OBS 설정용으로 Edge 창을 재생만 시켜 띄움 (녹화 X) |
 | `pnpm spike ["<URL>"]` | 플레이어 신호/컨트롤 관찰용 대화형 도구 (디버깅) |
@@ -154,6 +154,21 @@ pnpm start no1-stock
 
 환경변수 스위치: `FORCE=1`(완료분도 재녹화), `HEADLESS=1`(창 없이 — 서버용, 주로 download에), `MAX_RECORD_SEC=60`(테스트).
 PowerShell 예: `$env:FORCE=1; pnpm start no1-stock`
+
+### 두 PC로 나눠 녹화 (위/아래 분담)
+
+같은 catalog를 두 대에서 동시에 돌리면 대략 2배 빠르게 끝낼 수 있다. 한쪽은 위에서부터, 다른쪽은 아래에서부터:
+
+```
+# PC-A (위 → 아래, 기본)
+pnpm start no1-stock
+
+# PC-B (아래 → 위)
+pnpm start no1-stock reverse
+```
+
+- 완료 판정 기준은 여전히 **드라이브에 파일 존재**라, 서로의 진행상황을 공유할 필요가 없다.
+- 각 항목 녹화 **직전에 드라이브를 재확인**해서, 두 PC가 중간에서 만나도 이미 올라온 건 건너뛴다(중복 녹화 방지). 정확히 동시에 같은 걸 시작한 항목만 드물게 중복될 수 있다.
 
 ---
 

@@ -28,6 +28,20 @@ export class DriveClient {
     return created.data.id;
   }
 
+  // 특정 콘텐츠가 이미 이 폴더에 올라와 있는지 타겟 조회(전체 리스트 없이 가볍게).
+  // 위/아래 동시 녹화 시 "다른 PC가 방금 올렸나?" 를 항목마다 재확인하는 용도.
+  async findByContentId(folderId, contentId) {
+    const q = [
+      `'${folderId}' in parents`,
+      'trashed=false',
+      `appProperties has { key='contentId' and value='${String(contentId).replace(/'/g, "\\'")}' }`,
+    ].join(' and ');
+    const res = await this.drive.files.list({
+      q, fields: 'files(id,name)', pageSize: 1, spaces: 'drive', supportsAllDrives: true,
+    });
+    return res.data.files?.length ? res.data.files[0] : null;
+  }
+
   async listFiles(folderId) {
     const files = [];
     let pageToken;
