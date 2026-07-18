@@ -1,0 +1,6 @@
+node_modules/
+.userdata*/
+recordings/
+.env
+*.log
+data/catalogs/
