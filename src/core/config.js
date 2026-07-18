@@ -58,6 +58,6 @@ export const config = {
     quality: 15000,          // 1080p 반영 대기
     endWatchdogMargin: 180000, // ended 안 오면 duration+3분 후 강제 종료
     obsStartConfirm: 8000,   // OBS 녹화 active 확인 최대 대기 (안전마진)
-    tailDelay: 1500,         // ended 후 정지까지 여유 (끝 짤림 방지)
+    tailDelay: 5000,         // ended 후 정지까지 여유 (끝 짤림 방지)
   },
 };
