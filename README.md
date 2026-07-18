@@ -71,8 +71,10 @@ public 저장소라 인증 없이 받아진다. **이후 모든 명령은 이 `v
 **⑤ 브라우저**: Microsoft **Edge**는 Windows에 기본 설치돼 있어 별도 설치 불필요 (`BROWSER=msedge` 사용).
 
 ### 1) 프로젝트 의존성 설치
-프로젝트 폴더에서:
+이 프로젝트는 Playwright의 `channel: 'msedge'`로 **시스템에 설치된 Edge를 그대로 실행**한다 — Playwright 전용 브라우저(Chromium 등)를 따로 받을 필요가 없다.
+그 자동 다운로드(수백MB~1GB, 우리 프로젝트엔 불필요)를 건너뛰도록 환경변수를 잡고 설치한다:
 ```powershell
+$env:PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"
 pnpm install
 ```
 
