@@ -55,15 +55,17 @@ export async function run(catalogName, { reverse = false } = {}) {
   let doneThisSession = 0;
   let stopping = false;
 
-  // STOP(Ctrl+C): 진행 중 녹화 폐기 + 정리 + 알림
-  process.once('SIGINT', async () => {
-    if (stopping) process.exit(130);
+  // STOP(Ctrl+C): 진행 중 녹화 폐기 + 정리 + 알림.
+  // 알림을 정리보다 "먼저" 보낸다 — context.close()가 느리거나 멈춰도 STOP 알림은 확실히 나가게.
+  // once가 아니라 on + 가드: 두 번째 Ctrl+C는 무시하고 정리를 끝까지 진행(중복 신호로 인한 강제 종료 방지).
+  process.on('SIGINT', async () => {
+    if (stopping) return;
     stopping = true;
     err('\n⛔ STOP — 진행 중 녹화 폐기 & 정리 중...');
+    await notifyStopped(doneThisSession);
     try { if (await obs.isRecording()) await obs.stop(); } catch (_) {}
     try { await obs.disconnect(); } catch (_) {}
     try { await context.close(); } catch (_) {}
-    await notifyStopped(doneThisSession);
     process.exit(130);
   });
 

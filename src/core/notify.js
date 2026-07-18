@@ -12,6 +12,7 @@ async function post(body, { title = 'Recorder', priority = 'default' } = {}) {
       method: 'POST',
       body,
       headers: { Title: title, Priority: String(PRI[priority] ?? 3) },
+      signal: AbortSignal.timeout(5000), // 네트워크가 죽어도 STOP 정리·종료가 막히지 않게
     });
   } catch (e) { err('ntfy 실패:', e.message); }
 }
@@ -19,4 +20,4 @@ async function post(body, { title = 'Recorder', priority = 'default' } = {}) {
 export const notifyDone = (title) => post(`✅ ${title}`, { title: 'Recorded', priority: 'default' });
 export const notifyFail = (title, reason) => post(`❌ ${title}\n${reason}`, { title: 'Failed', priority: 'high' });
 export const notifyLogin = () => post('🔐 네이버 재로그인 필요 (세션 만료)', { title: 'Login needed', priority: 'max' });
-export const notifyStopped = (n) => post(`⏹ 중단 — 이번 세션 ${n}개 완료`, { title: 'Stopped', priority: 'low' });
+export const notifyStopped = (n) => post(`⏹ 중단 — 이번 세션 ${n}개 완료`, { title: 'Stopped', priority: 'default' });
