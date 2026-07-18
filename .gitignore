@@ -3,4 +3,4 @@ node_modules/
 recordings/
 .env
 *.log
-data/catalogs/
+data/
