@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Playwright + OBS로 브라우저 동영상을 순차 녹화하는 오케스트레이터",
+  "description": "Playwright + OBS로 브라우저 동영상을 순차 녹화하고, 페이지 캡처도 지원하는 오케스트레이터",
   "scripts": {
     "start": "node src/index.js",
+    "shot": "node src/capture.js",
     "urls": "node src/list.js",
     "download": "node src/download.js",
     "spike": "node src/spike/observe.js",

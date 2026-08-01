@@ -1,6 +1,7 @@
 node_modules/
 .userdata*/
 recordings/
+captures/
 .env
 *.log
 data/

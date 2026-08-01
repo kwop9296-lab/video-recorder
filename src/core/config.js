@@ -14,6 +14,7 @@ export const config = {
   // 브라우저별로 프로필(로그인 세션) 분리 — chrome↔edge 는 프로필 공유 불가
   userDataDir: path.join(root, browserChannel === 'chrome' ? '.userdata' : `.userdata-${browserChannel}`),
   recordDir: process.env.RECORD_DIR ? path.resolve(root, process.env.RECORD_DIR) : path.join(root, 'recordings'),
+  captureDir: process.env.CAPTURE_DIR ? path.resolve(root, process.env.CAPTURE_DIR) : path.join(root, 'captures'),
 
   headless: /^(1|true|yes)$/i.test(process.env.HEADLESS || ''), // 다운로더를 화면 없이 실행 (서버용)
   force: /^(1|true|yes)$/i.test(process.env.FORCE || ''), // 이미 완료된 것도 무시하고 재녹화
@@ -40,6 +41,18 @@ export const config = {
 
   quality: '1080p',
 
+  // 페이지 캡처(pnpm shot) — 녹화와 완전히 별개 경로. OBS/영상 제어를 쓰지 않는다.
+  capture: {
+    // 뷰포트를 명시 고정 → PC 모니터 해상도와 무관하게 결과물 폭이 항상 같다(두 PC 분담 시 중요).
+    viewport: { width: 1440, height: 900 },
+    maxPageHeight: 16000, // 이 높이를 넘으면 Chromium 한계로 한 장 캡처가 잘림 → 자동 분할
+    splitChunk: 8000,     // 분할 시 한 장의 높이
+    scrollRatio: 0.9,     // lazy 로딩 유발용 스크롤 보폭 (뷰포트 대비)
+    scrollDelay: 350,     // 스크롤 한 칸마다 대기
+    maxScrollLoops: 400,  // 무한 스크롤 안전장치
+    settleDelay: 800,     // 맨 위 복귀 후 안정화 대기
+  },
+
   // 테스트용: >0 이면 영상이 안 끝나도 이 초수에서 녹화 강제 종료 (예: 60)
   maxRecordSec: process.env.MAX_RECORD_SEC ? Number(process.env.MAX_RECORD_SEC) : 0,
 
@@ -59,5 +72,7 @@ export const config = {
     endWatchdogMargin: 180000, // ended 안 오면 duration+3분 후 강제 종료
     obsStartConfirm: 8000,   // OBS 녹화 active 확인 최대 대기 (안전마진)
     tailDelay: 5000,         // ended 후 정지까지 여유 (끝 짤림 방지)
+    pageSettle: 15000,       // 캡처: 이동 후 networkidle 대기 (안 와도 그냥 진행)
+    imageLoad: 10000,        // 캡처: 남은 이미지 디코드 대기 상한
   },
 };
