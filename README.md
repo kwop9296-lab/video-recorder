@@ -1,6 +1,7 @@
 # video-recorder
 
 네이버 프리미엄 콘텐츠(시황 등) 영상을 **Playwright(Edge) + OBS**로 자동 녹화하고, **구글 드라이브**에 업로드하는 도구.
+같은 목록을 대상으로 **페이지 자체를 PNG로 캡처**하는 모드(`pnpm shot`)도 있다.
 완료 여부는 드라이브를 기준으로 판단하며, 언제 멈춰도(항상 녹화 도중 STOP) 다음에 이어서 진행한다.
 
 ---
@@ -26,6 +27,10 @@ pnpm start →  catalog의 "미완료"만 순서대로:
                 Edge로 콘텐츠 열기 → 재생 → 1080p → 전체화면
               → OBS 녹화(화면+소리) → 끝(ended)까지 → 정지
               → 구글 드라이브 업로드(무결성 md5 검증) → 폰 알림
+
+pnpm shot  →  같은 catalog를 순회하되 녹화 대신:
+                Edge로 콘텐츠 열기 → 끝까지 스크롤(lazy 로딩) → 전체페이지 PNG 캡처
+              → 드라이브 <catalog>-shots 폴더에 업로드 (OBS 불필요)
 ```
 
 - **완료 기준 = 구글 드라이브에 그 영상 파일이 있음.** (로컬 파일 유무는 무관)
@@ -138,6 +143,24 @@ pnpm start no1-stock
 - 새 대상이 생기면 다른 이름으로: `pnpm urls "<다른카테고리URL>" other-name` → `pnpm start other-name`
 - **테스트**: `.env`의 `MAX_RECORD_SEC=60` 이면 각 영상을 60초만 녹화. 실제 운영은 **비워둔다**.
 
+### 페이지 캡처 (`pnpm shot`)
+
+영상 대신 **페이지 자체를 PNG로 캡처**하는 별도 모드. catalog는 녹화와 **같은 것을 쓴다**.
+
+```powershell
+pnpm shot no1-stock
+```
+
+- 같은 페이지에 접속하지만 **재생·1080p·전체화면·OBS를 전혀 쓰지 않는다.** OBS가 꺼져 있어도 된다.
+- 페이지를 **끝까지 스크롤**해 lazy 이미지를 모두 불러온 뒤, 맨 위로 돌아와 **전체페이지 한 장**으로 찍는다.
+- 항목당 수 초라 녹화보다 훨씬 빠르다. `reverse`·`FORCE=1`·두 PC 분담 모두 녹화와 동일하게 동작.
+- **캡처 대상은 catalog 전체 항목** — 녹화에서 `novideo`로 걸러진 것도 포함한다(영상이 없어도 글은 있으므로).
+- **완료 판정은 녹화와 완전히 분리**돼 있다: 드라이브의 `<catalog>-shots` 폴더 기준. 녹화 완료 여부에 영향을 주지도 받지도 않는다.
+- 결과물 폭은 **항상 1440px 고정**(모니터 해상도와 무관) — 두 PC로 나눠 돌려도 같은 크기로 나온다.
+- 문서가 아주 길어 한 장 한계(약 16000px)를 넘으면 **자동으로 여러 장(`<제목>_1.png`, `_2.png`…)으로 분할**한다. 이때는 **전부 업로드된 뒤에야** 완료로 친다(중간에 끊기면 다음 실행에서 다시 캡처).
+- 알림은 항목마다 오지 않고 **세션 끝에 요약 1건** + 실패 시 개별 알림.
+- 로컬 보관: `captures/<catalog>/<제목>.png`
+
 ---
 
 ## 명령어 전체
@@ -146,6 +169,7 @@ pnpm start no1-stock
 |---|---|
 | `pnpm urls "<URL>" <catalog>` | 카테고리 목록 → catalog 병합 (제목+URL, ✅/⬜ 표시) |
 | `pnpm start [catalog] [reverse]` | catalog의 미완료 녹화 → 드라이브 업로드 (catalog 하나면 이름 생략 가능). `reverse`(=`-r`/`desc`): 아래에서부터 녹화 |
+| `pnpm shot [catalog] [reverse]` | catalog 페이지를 PNG로 캡처 → `<catalog>-shots` 폴더에 업로드. OBS 불필요. 인자 규칙은 `start`와 동일 |
 | `pnpm obs:check [--rec]` | OBS 연결/해상도 확인 (`--rec`: 5초 테스트 녹화) |
 | `pnpm setup:window "<URL>"` | OBS 설정용으로 Edge 창을 재생만 시켜 띄움 (녹화 X) |
 | `pnpm spike ["<URL>"]` | 플레이어 신호/컨트롤 관찰용 대화형 도구 (디버깅) |
@@ -181,9 +205,10 @@ pnpm start no1-stock reverse
 | `OBS_WS_PASSWORD` | ✔(녹화) | OBS WebSocket 비밀번호 |
 | `OBS_SCENE` | | 지정 시 녹화 전 이 장면으로 전환 |
 | `RECORD_DIR` | | 로컬 저장 폴더 (기본 `./recordings`) |
+| `CAPTURE_DIR` | | 캡처 저장 폴더 (기본 `./captures`) |
 | `MAX_RECORD_SEC` | | >0이면 그 초수에서 강제 종료(테스트). 운영은 비움 |
 | `NTFY_TOPIC` | | ntfy 알림 토픽 (비우면 알림 끔) |
-| `GDRIVE_ROOT` | ✔ | 드라이브 루트 폴더명. **없으면 `start`/`urls` 실행 거부** |
+| `GDRIVE_ROOT` | ✔ | 드라이브 루트 폴더명. **없으면 `start`/`shot`/`urls` 실행 거부** |
 | `GOOGLE_OAUTH_CLIENT_ID` | ✔ | 구글 OAuth (drive.file 스코프) |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | ✔ | 〃 |
 | `GOOGLE_OAUTH_REFRESH_TOKEN` | ✔ | 〃 |
@@ -201,6 +226,7 @@ pnpm start no1-stock reverse
 - **앞뒤 짤림 방지**: OBS가 실제 "녹화 중"이 된 뒤 재생 시작, `ended` 후 여유를 두고 정지.
 - **영상 없는 페이지**: 자동 스킵하고 catalog에 `novideo` 기록 → 다음엔 즉시 건너뜀.
 - **로컬 파일**: 삭제 안 함. `recordings/<제목>.mkv` (재녹화 시 덮어씀).
+- **캡처(`pnpm shot`)는 별도 폴더 `<catalog>-shots` 기준**이라 녹화 완료 판정과 서로 간섭하지 않는다. 항목이 원자적(캡처를 다 끝낸 뒤 업로드)이라 STOP 해도 진행 중 항목만 버리면 되고, 분할된 여러 장은 **마지막 장까지 올라가야** 완료로 인정된다.
 
 ---
 
@@ -211,17 +237,21 @@ video-recorder/
 ├─ .env                      # 설정(비밀값 포함, git 제외)
 ├─ data/catalogs/<이름>.json  # 종류별 작업 큐 [{id,title,url,skip?,done?}]
 ├─ recordings/               # 로컬 보관본 <제목>.mkv
+├─ captures/<catalog>/       # 로컬 캡처본 <제목>.png
 ├─ .userdata-msedge/         # Edge 프로필(네이버 로그인 세션, git 제외)
 └─ src/
    ├─ index.js               # 진입점 (pnpm start)
+   ├─ capture.js             # 진입점 (pnpm shot)
    ├─ list.js                # pnpm urls
    ├─ orchestrator.js        # 지휘: 미완료 순회→녹화→업로드
-   ├─ browser/               # session(로그인)·navigator·videoProbe(재생/신호)
+   ├─ captureOrchestrator.js # 지휘(캡처): 미완료 순회→PNG 캡처→업로드
+   ├─ browser/               # session(로그인)·navigator·videoProbe(재생/신호)·pageCapture
    ├─ recorder/obsRecorder   # OBS 제어
    ├─ drive/                 # 구글 드라이브(OAuth+업로드)
-   └─ core/                  # config·catalog·notify(ntfy)·logger
+   └─ core/                  # config·catalog·notify(ntfy)·logger·filename
 
-구글 드라이브:  내 드라이브 / <GDRIVE_ROOT> / <catalog> / <제목>.mkv
+구글 드라이브:  내 드라이브 / <GDRIVE_ROOT> / <catalog>       / <제목>.mkv   ← 녹화
+              내 드라이브 / <GDRIVE_ROOT> / <catalog>-shots / <제목>.png   ← 캡처
 ```
 
 ---
@@ -238,6 +268,9 @@ video-recorder/
 | 소리가 **스피커로 들림** | 볼륨 믹서에서 Edge 출력 = `CABLE Input` 인지 확인 |
 | `urls` 제목이 "동영상"만 | 목록 페이지 구조가 다름 → 그 페이지 HTML 공유해 셀렉터 조정 |
 | 알림이 안 옴 | `NTFY_TOPIC` 설정 + 폰 앱에서 같은 토픽 구독 확인 |
+| `shot` 캡처에 **이미지가 빈칸** | lazy 로딩이 덜 걸린 것. 본문이 페이지가 아닌 내부 컨테이너에서 스크롤되는 구조일 수 있다 → 그 셀렉터 확인 후 `pageCapture.js`의 스크롤 대상 조정 |
+| `shot` 결과가 **여러 장으로 쪼개짐** | 정상. 문서가 한 장 한계(16000px)를 넘으면 자동 분할한다 (`config.capture.splitChunk`로 장당 높이 조절) |
+| `shot` 이 같은 항목을 **매번 다시 캡처** | 분할 업로드가 중간에 끊겨 완료 표식이 안 붙은 것. 실패 알림의 사유를 확인 (네트워크/용량) |
 
 ---
 
