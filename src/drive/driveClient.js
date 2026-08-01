@@ -42,6 +42,19 @@ export class DriveClient {
     return res.data.files?.length ? res.data.files[0] : null;
   }
 
+  // 한 콘텐츠에 딸린 파일 전부(캡처는 분할되면 여러 장). 완료 판정·정리에 쓴다.
+  async listByContentId(folderId, contentId) {
+    const q = [
+      `'${folderId}' in parents`,
+      'trashed=false',
+      `appProperties has { key='contentId' and value='${String(contentId).replace(/'/g, "\\'")}' }`,
+    ].join(' and ');
+    const res = await this.drive.files.list({
+      q, fields: 'files(id,name,appProperties)', pageSize: 100, spaces: 'drive', supportsAllDrives: true,
+    });
+    return res.data.files || [];
+  }
+
   async listFiles(folderId) {
     const files = [];
     let pageToken;
@@ -58,11 +71,13 @@ export class DriveClient {
   }
 
   // 파일 업로드 → { id, md5Checksum, size }
-  async uploadFile({ folderId, name, filePath, contentId }) {
+  // props: 추가 appProperties (예: 분할 캡처의 마지막 장에 붙이는 complete 표식)
+  async uploadFile({ folderId, name, filePath, contentId, props }) {
+    const appProperties = { ...(contentId ? { contentId: String(contentId) } : {}), ...props };
     const res = await this.drive.files.create({
       requestBody: {
         name, parents: [folderId],
-        appProperties: contentId ? { contentId: String(contentId) } : undefined,
+        appProperties: Object.keys(appProperties).length ? appProperties : undefined,
       },
       media: { body: fs.createReadStream(filePath) },
       fields: 'id, md5Checksum, size',

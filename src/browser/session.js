@@ -6,18 +6,21 @@ import { chromium } from 'playwright';
 import { config } from '../core/config.js';
 import { log } from '../core/logger.js';
 
-export async function launchSession({ headless = false } = {}) {
+// viewport: null(기본) = 창 크기를 그대로 씀(녹화용 — 전체화면이 곧 캡처 영역).
+// viewport: {width,height} = 크기를 명시 고정(캡처용 — 모니터 해상도와 무관하게 결과물 폭 고정).
+export async function launchSession({ headless = false, viewport = null } = {}) {
   const context = await chromium.launchPersistentContext(config.userDataDir, {
     headless,
     channel: config.browserChannel,
-    viewport: null,
+    viewport,
     chromiumSandbox: true, // 샌드박스 켜기 → "--no-sandbox 경고 바" 제거
     ignoreDefaultArgs: ['--enable-automation'],
     args: [
       '--disable-blink-features=AutomationControlled',
       '--autoplay-policy=no-user-gesture-required',
       '--test-type', // "지원되지 않는 명령줄 플래그" 경고 바 제거
-      '--start-fullscreen', // 탭/주소창 없이 전체화면으로 시작
+      // 뷰포트를 고정한 캡처 세션에서는 전체화면이 의미 없다(뷰포트가 창 크기를 무시하므로)
+      ...(viewport ? [] : ['--start-fullscreen']), // 탭/주소창 없이 전체화면으로 시작
       // 창이 가려져도(=앞에서 다른 작업) 계속 렌더/재생하도록 — WGC 백그라운드 캡처용
       '--disable-features=CalculateNativeWinOcclusion',
       '--disable-backgrounding-occluded-windows',

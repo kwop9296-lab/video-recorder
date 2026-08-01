@@ -12,6 +12,7 @@ import { installProbe, VideoController } from './browser/videoProbe.js';
 import { ObsRecorder } from './recorder/obsRecorder.js';
 import { DriveClient, md5OfFile } from './drive/driveClient.js';
 import { loadCatalog, setSkip } from './core/catalog.js';
+import { sanitize } from './core/filename.js';
 import { notifyDone, notifyFail, notifyLogin, notifyStopped } from './core/notify.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -163,7 +164,6 @@ async function recordOne(page, bus, obs, v) {
   return { localPath: dest, title };
 }
 
-function sanitize(name) { return String(name).replace(/[<>:"/\\|?*\n\r\t]+/g, '_').replace(/\.+$/, '').trim().slice(0, 90) || 'video'; }
 function fmtDur(sec) { const m = Math.floor(sec / 60), s = Math.round(sec % 60); return `${m}분 ${s}초`; }
 
 async function moveFile(src, dest) {
