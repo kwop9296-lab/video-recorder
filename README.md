@@ -140,6 +140,8 @@ pnpm start no1-stock
 ```
 
 - `pnpm urls`는 **병합**이라 여러 번 돌려도 기존 목록·진행상황이 안 날아간다. 새 영상만 추가된다.
+- 순서는 실행할 때마다 **사이트 목록 순서(최신이 위)로 다시 잡힌다** → 새로 올라온 영상이 catalog 맨 위에 오고 `pnpm start`가 **최신부터** 녹화한다. 출력 맨 위의 `🆕 신규 N개`로 이번에 뭐가 늘었는지 바로 확인할 수 있다.
+- 사이트 목록에서 사라진 항목(비공개 전환 등)도 지우지 않고 맨 아래에 남긴다.
 - 새 대상이 생기면 다른 이름으로: `pnpm urls "<다른카테고리URL>" other-name` → `pnpm start other-name`
 - **테스트**: `.env`의 `MAX_RECORD_SEC=60` 이면 각 영상을 60초만 녹화. 실제 운영은 **비워둔다**.
 
@@ -167,7 +169,7 @@ pnpm shot no1-stock
 
 | 명령 | 설명 |
 |---|---|
-| `pnpm urls "<URL>" <catalog>` | 카테고리 목록 → catalog 병합 (제목+URL, ✅/⬜ 표시) |
+| `pnpm urls "<URL>" <catalog>` | 카테고리 목록 → catalog 병합 (제목+URL, 최신순 재정렬, 신규 표시, ✅완료/⏭영상없음/⬜남음) |
 | `pnpm start [catalog] [reverse]` | catalog의 미완료 녹화 → 드라이브 업로드 (catalog 하나면 이름 생략 가능). `reverse`(=`-r`/`desc`): 아래에서부터 녹화 |
 | `pnpm shot [catalog] [reverse]` | catalog 페이지를 PNG로 캡처 → `<catalog>-shots` 폴더에 업로드. OBS 불필요. 인자 규칙은 `start`와 동일 |
 | `pnpm obs:check [--rec]` | OBS 연결/해상도 확인 (`--rec`: 5초 테스트 녹화) |
@@ -193,6 +195,7 @@ pnpm start no1-stock reverse
 
 - 완료 판정 기준은 여전히 **드라이브에 파일 존재**라, 서로의 진행상황을 공유할 필요가 없다.
 - 각 항목 녹화 **직전에 드라이브를 재확인**해서, 두 PC가 중간에서 만나도 이미 올라온 건 건너뛴다(중복 녹화 방지). 정확히 동시에 같은 걸 시작한 항목만 드물게 중복될 수 있다.
+- 중간에 `pnpm urls`를 다시 돌리면 catalog 순서가 최신순으로 다시 잡히면서 위/아래 경계가 조금 움직인다. 위의 직전 재확인 덕에 **중복 녹화는 안 나고**, 헛도는 항목만 몇 개 생긴다. 신경 쓰인다면 두 PC 모두 같은 시점의 catalog로 맞추면 된다.
 
 ---
 
