@@ -24,17 +24,27 @@ export async function saveCatalog(name, list) {
   await fs.writeFile(catalogPath(name), JSON.stringify(list, null, 2) + '\n');
 }
 
-// 병합: 기존 항목 유지 + 새 항목 추가(id union). 제목은 최신값 보강, skip(영상없음)은 보존.
+// 병합: 기존 항목 유지 + 새 항목 추가(id union). 제목은 최신값 보강, skip(영상없음)·done은 보존.
+// 순서는 incoming(사이트 목록 순서 = 최신이 위) 기준으로 매번 다시 잡는다.
+//   → 새로 올라온 콘텐츠가 catalog 맨 위에 오고, pnpm start/shot 도 최신부터 처리한다.
+// 이번 수집에 안 잡힌 기존 항목(비공개 전환·스크롤 밖 등)은 버리지 않고 원래 순서로 뒤에 남긴다.
+// 반환: { merged, added } — added 는 이번에 처음 들어온 항목(신규 표시용).
 export async function mergeCatalog(name, incoming) {
   const cur = await loadCatalog(name);
   const byId = new Map(cur.map((e) => [e.id, e]));
+  const seen = new Set();
+  const head = [];
+  const added = [];
   for (const it of incoming) {
+    if (seen.has(it.id)) continue; // 목록에 중복 노출된 카드 방어
+    seen.add(it.id);
     const prev = byId.get(it.id);
-    byId.set(it.id, prev ? { ...prev, title: it.title || prev.title, url: it.url || prev.url, skip: prev.skip || it.skip } : it);
+    if (!prev) { head.push(it); added.push(it); continue; }
+    head.push({ ...prev, title: it.title || prev.title, url: it.url || prev.url });
   }
-  const merged = [...byId.values()];
+  const merged = [...head, ...cur.filter((e) => !seen.has(e.id))];
   await saveCatalog(name, merged);
-  return merged;
+  return { merged, added };
 }
 
 export async function setSkip(name, id, skip) {
