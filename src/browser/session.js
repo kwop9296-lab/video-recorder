@@ -2,13 +2,39 @@
 // 비밀번호는 절대 자동 입력하지 않는다. 최초 1회 사용자가 직접 로그인하고,
 // 이후엔 .userdata 프로필에 저장된 세션을 재사용한다.
 
+import fsp from 'node:fs/promises';
+import path from 'node:path';
 import { chromium } from 'playwright';
 import { config } from '../core/config.js';
 import { log } from '../core/logger.js';
 
+// Edge 세션 복원 차단 — 직전 실행이 비정상 종료(크래시·강제 종료)되면 Edge가 지난 탭을 되살린다.
+// 그러면 탭이 2개가 되어 창 제목이 "REC-AUTOMATION 외 페이지 1개"로 바뀌고,
+// 제목 일치로 잠근 OBS 윈도우 캡처가 창을 놓친다(검은 화면). 복원할 거리를 아예 없애고 시작한다.
+// 지우는 건 탭/세션 기록뿐 — 쿠키·로그인 세션은 다른 파일이라 영향 없다.
+async function clearRestoreState(userDataDir) {
+  const profile = path.join(userDataDir, 'Default');
+  for (const d of ['Sessions', 'EdgeSessions']) {
+    await fsp.rm(path.join(profile, d), { recursive: true, force: true }).catch(() => {});
+  }
+  // 크래시 표식도 정상 종료로 되돌린다 (복원 프롬프트/자동 복원 트리거)
+  const prefPath = path.join(profile, 'Preferences');
+  try {
+    const pref = JSON.parse(await fsp.readFile(prefPath, 'utf-8'));
+    if (pref.profile?.exit_type !== 'Normal' || pref.profile?.exited_cleanly !== true) {
+      pref.profile = { ...pref.profile, exit_type: 'Normal', exited_cleanly: true };
+      await fsp.writeFile(prefPath, JSON.stringify(pref));
+    }
+  } catch (_) {} // 프로필 최초 생성 등 — 없으면 그냥 넘어간다
+}
+
+// 수동 로그인 중에는 여분 탭 정리를 멈춘다 — 사용자가 직접 여는 창(팝업)을 닫아버리지 않도록.
+let manualLogin = false;
+
 // viewport: null(기본) = 창 크기를 그대로 씀(녹화용 — 전체화면이 곧 캡처 영역).
 // viewport: {width,height} = 크기를 명시 고정(캡처용 — 모니터 해상도와 무관하게 결과물 폭 고정).
 export async function launchSession({ headless = false, viewport = null } = {}) {
+  await clearRestoreState(config.userDataDir); // 브라우저 뜨기 전에 — 지난 탭이 되살아나지 않도록
   const context = await chromium.launchPersistentContext(config.userDataDir, {
     headless,
     channel: config.browserChannel,
@@ -36,6 +62,18 @@ export async function launchSession({ headless = false, viewport = null } = {}) 
     setInterval(pin, 500);
   }, config.windowTitle);
 
+  // 안전망 — 그래도 살아남은 복원 탭은 닫는다. 자동화용 첫 탭만 남긴다.
+  const main = context.pages()[0] || (await context.newPage());
+  const closeExtra = async (p) => {
+    if (p === main || manualLogin) return;
+    await p.close().catch(() => {});
+    log('🧹 여분 탭 정리 — 창 제목을 REC-AUTOMATION 하나로 유지');
+  };
+  for (const p of context.pages()) await closeExtra(p);
+  // 복원 탭은 launchPersistentContext 반환보다 늦게 붙기도 하고, 녹화 중 사이트가 새 탭을
+  // 띄우기도 한다 → 세션 내내 감시한다. 제목이 바뀌면 그 순간 OBS 캡처가 끊기므로.
+  context.on('page', closeExtra);
+
   return context;
 }
 
@@ -53,10 +91,15 @@ export async function ensureLoggedIn(context, { timeout = 300000 } = {}) {
   await page.goto('https://nid.naver.com/nidlogin.login').catch(() => {});
   log('⚠ 네이버 로그인이 필요합니다 → 열린 창에서 직접 로그인하세요 ("로그인 상태 유지" 체크 권장)');
 
-  const start = Date.now();
-  while (Date.now() - start < timeout) {
-    if (await isLoggedIn(context)) { log('✅ 로그인 확인됨'); return; }
-    await new Promise((r) => setTimeout(r, 2000));
+  manualLogin = true; // 로그인 동안엔 여분 탭 정리 중단 (사용자가 연 창을 닫지 않도록)
+  try {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      if (await isLoggedIn(context)) { log('✅ 로그인 확인됨'); return; }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    throw new Error('로그인 대기 시간 초과');
+  } finally {
+    manualLogin = false;
   }
-  throw new Error('로그인 대기 시간 초과');
 }
