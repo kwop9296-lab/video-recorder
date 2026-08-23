@@ -63,14 +63,42 @@ export class VideoController {
     return this.frame.evaluate((s) => {
       const v = document.querySelector(s);
       if (!v) return null;
-      return { t: v.currentTime, dur: v.duration, paused: v.paused, ended: v.ended, ready: v.readyState, vw: v.videoWidth, vh: v.videoHeight, fs: !!document.fullscreenElement };
+      return { t: v.currentTime, dur: v.duration, paused: v.paused, ended: v.ended, ready: v.readyState, vw: v.videoWidth, vh: v.videoHeight, err: v.error ? v.error.code : null, fs: !!document.fullscreenElement };
     }, this.sel.video);
   }
 
-  async clickCenter() {
+  // 좌표 클릭/호버(page.mouse)의 기준점. page.mouse 는 스크롤을 하지 않으므로,
+  // 영상이 본문 아래쪽(첫 화면 밖)에 있는 글이면 뷰포트 밖 좌표로 이벤트를 쏘게 되고
+  // 아무 일도 안 일어난다(예외조차 없음 — boundingBox 는 화면 밖이어도 값을 준다).
+  // → 먼저 영상을 화면 중앙으로 끌어온다. 뷰포트 진입 시에만 초기화되는 플레이어도 이때 깨어난다.
+  async centerPoint() {
+    await this.loc(this.sel.video).scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
+    await this.frame.evaluate((s) => {
+      document.querySelector(s)?.scrollIntoView({ block: 'center', inline: 'center' });
+    }, this.sel.video).catch(() => {});
+    await sleep(300); // 스크롤 정착(스티키 헤더/지연 로딩으로 좌표가 흔들림)
+
     const box = await this.loc(this.sel.video).boundingBox({ timeout: 5000 });
     if (!box) throw new Error('video boundingBox 없음');
-    await this.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    // 창 크기를 그대로 쓰는 세션(viewport:null)이라 innerWidth/Height 로 실제 값을 읽는다
+    const vp = await this.page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
+    if (x < 0 || y < 0 || x > vp.w || y > vp.h) {
+      throw new Error(`영상이 화면 밖 — 클릭지점(${Math.round(x)},${Math.round(y)}) 뷰포트(${vp.w}x${vp.h})`);
+    }
+    return { x, y };
+  }
+
+  async clickCenter() {
+    const { x, y } = await this.centerPoint();
+    await this.page.mouse.click(x, y);
+  }
+
+  // 컨트롤바를 띄우기 위한 마우스 올리기 — 클릭과 같은 이유로 스크롤이 먼저다.
+  async hoverCenter() {
+    const { x, y } = await this.centerPoint();
+    await this.page.mouse.move(x, y);
   }
 
   // 클릭으로 재생 시작 → currentTime 증가로 확인, 안 되면 재시도
@@ -81,7 +109,9 @@ export class VideoController {
       log(`  ↻ 재생 재시도(${attempt})`);
       await sleep(800);
     }
-    throw new Error('재생 시작 실패 (currentTime 증가 없음)');
+    const s = await this.state().catch(() => null);
+    const detail = s ? ` · t=${s.t} ready=${s.ready} paused=${s.paused} ${s.vw}x${s.vh}${s.err ? ` err=${s.err}` : ''}` : ' · 상태읽기 실패';
+    throw new Error(`재생 시작 실패 (currentTime 증가 없음${detail})`);
   }
 
   timeoutPlay() { return 12000; }
@@ -101,8 +131,7 @@ export class VideoController {
 
   // PrismPlayer: 톱니바퀴 → 해상도 → 1080p, videoWidth로 반영 확인
   async setQuality(label = '1080p', timeout = 15000) {
-    const box = await this.loc(this.sel.video).boundingBox().catch(() => null);
-    if (box) await this.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); // 컨트롤 표시
+    await this.hoverCenter(); // 컨트롤 표시 (스크롤 포함)
     await this.loc(this.sel.settingsButton).click({ timeout: 4000 });
     await sleep(350);
     await this.loc(this.sel.qualityHome).click({ timeout: 4000 });
