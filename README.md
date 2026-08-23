@@ -129,8 +129,13 @@ pnpm setup:window "https://contents.premium.naver.com/no1/stock/contents/아무�
 ## 평소 사용법
 
 ```powershell
-# 1) 카테고리 목록 → catalog 로 (종류별 이름 부여)
+# 1) 최초 1회만 — 카테고리 목록 URL에 이름 붙이기 (data/sources.json 에 자동 등록)
 pnpm urls "https://contents.premium.naver.com/no1/stock/contents?categoryId=..." no1-stock
+
+# 1') 이후엔 이름만 — URL을 다시 찾을 필요 없다
+pnpm urls no1-stock
+pnpm urls all            # 등록된 catalog 전부, 브라우저 한 번만 띄워 순차 갱신
+pnpm urls                # 등록된 이름/URL 목록 보기
 
 # 2) 녹화 시작 (미완료만 → 드라이브 업로드)
 pnpm start no1-stock
@@ -143,6 +148,9 @@ pnpm start no1-stock
 - 순서는 실행할 때마다 **사이트 목록 순서(최신이 위)로 다시 잡힌다** → 새로 올라온 영상이 catalog 맨 위에 오고 `pnpm start`가 **최신부터** 녹화한다. 출력 맨 위의 `🆕 신규 N개`로 이번에 뭐가 늘었는지 바로 확인할 수 있다.
 - 사이트 목록에서 사라진 항목(비공개 전환 등)도 지우지 않고 맨 아래에 남긴다.
 - 새 대상이 생기면 다른 이름으로: `pnpm urls "<다른카테고리URL>" other-name` → `pnpm start other-name`
+- 이름↔URL 매핑은 `data/sources.json`에 쌓인다(`data/`는 git 제외 → **PC별 로컬 설정**). 같은 이름을 다른 URL로 다시 돌리면 그 URL로 갱신된다.
+- `pnpm urls all`은 한 대상이 실패해도 멈추지 않고 나머지를 계속 돌린 뒤, 맨 끝에 이름별 `신규/남음` 요약을 찍는다.
+- ⚠ **녹화·캡처가 도는 중에 `pnpm urls`/`pnpm shot`을 같이 돌리지 말 것** — 브라우저 프로필이 하나뿐이라, 나중 실행이 돌아가던 창에 빈 탭을 열어 창 제목이 바뀌고 **OBS 캡처가 끊긴다**. 실수로 겹치면 나중 명령이 `자동화 브라우저가 이미 실행 중입니다` 로 멈추도록 막아두었다.
 - **테스트**: `.env`의 `MAX_RECORD_SEC=60` 이면 각 영상을 60초만 녹화. 실제 운영은 **비워둔다**.
 
 ### 페이지 캡처 (`pnpm shot`)
@@ -169,7 +177,10 @@ pnpm shot no1-stock
 
 | 명령 | 설명 |
 |---|---|
-| `pnpm urls "<URL>" <catalog>` | 카테고리 목록 → catalog 병합 (제목+URL, 최신순 재정렬, 신규 표시, ✅완료/⏭영상없음/⬜남음) |
+| `pnpm urls <catalog> [catalog...]` | **등록된** URL로 catalog 병합 (최신순 재정렬, 신규 표시, ✅완료/⏭영상없음/⬜남음) |
+| `pnpm urls all` | 등록된 catalog 전부 갱신 (브라우저 1회 실행으로 순차 처리) |
+| `pnpm urls "<URL>" <catalog>` | URL을 이름에 등록(`data/sources.json`) + 갱신 — 최초 1회 |
+| `pnpm urls` | 등록된 이름/URL 목록 보기 |
 | `pnpm start [catalog] [reverse]` | catalog의 미완료 녹화 → 드라이브 업로드 (catalog 하나면 이름 생략 가능). `reverse`(=`-r`/`desc`): 아래에서부터 녹화 |
 | `pnpm shot [catalog] [reverse]` | catalog 페이지를 PNG로 캡처 → `<catalog>-shots` 폴더에 업로드. OBS 불필요. 인자 규칙은 `start`와 동일 |
 | `pnpm obs:check [--rec]` | OBS 연결/해상도 확인 (`--rec`: 5초 테스트 녹화) |
@@ -239,6 +250,7 @@ pnpm start no1-stock reverse
 video-recorder/
 ├─ .env                      # 설정(비밀값 포함, git 제외)
 ├─ data/catalogs/<이름>.json  # 종류별 작업 큐 [{id,title,url,skip?,done?}]
+├─ data/sources.json         # 이름 → 카테고리 목록 URL (pnpm urls <이름> 용, git 제외)
 ├─ recordings/               # 로컬 보관본 <제목>.mkv
 ├─ captures/<catalog>/       # 로컬 캡처본 <제목>.png
 ├─ .userdata-msedge/         # Edge 프로필(네이버 로그인 세션, git 제외)
@@ -251,7 +263,7 @@ video-recorder/
    ├─ browser/               # session(로그인)·navigator·videoProbe(재생/신호)·pageCapture
    ├─ recorder/obsRecorder   # OBS 제어
    ├─ drive/                 # 구글 드라이브(OAuth+업로드)
-   └─ core/                  # config·catalog·notify(ntfy)·logger·filename
+   └─ core/                  # config·catalog·sources(이름→URL)·notify(ntfy)·logger·filename
 
 구글 드라이브:  내 드라이브 / <GDRIVE_ROOT> / <catalog>       / <제목>.mkv   ← 녹화
               내 드라이브 / <GDRIVE_ROOT> / <catalog>-shots / <제목>.png   ← 캡처
@@ -263,6 +275,7 @@ video-recorder/
 
 | 증상 | 원인·해결 |
 |---|---|
+| `자동화 브라우저가 이미 실행 중입니다` | 같은 프로필(`.userdata-*`)을 쓰는 Edge가 떠 있다. **녹화/캡처가 도는 중이면 끝난 뒤에** 실행할 것. 아무것도 안 도는데 뜨면(Ctrl+C 로 끊어 남은 유령 프로세스) 같은 명령에 `--kill-browser` 를 붙여 재실행 |
 | `GDRIVE_ROOT 미설정` | `.env`에 `GDRIVE_ROOT` 지정 |
 | `구글 OAuth 자격증명 없음` | `.env`에 `GOOGLE_OAUTH_*` 3개 확인 |
 | 시작 시 로그인 페이지가 뜸 | 네이버 세션 만료 → Edge 창에서 재로그인(“로그인 상태 유지”). ntfy로 🔐 알림도 옴 |

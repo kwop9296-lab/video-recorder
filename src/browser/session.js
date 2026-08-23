@@ -4,9 +4,55 @@
 
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { chromium } from 'playwright';
 import { config } from '../core/config.js';
 import { log } from '../core/logger.js';
+
+const execFileP = promisify(execFile);
+
+// 자동화 프로필을 이미 물고 있는 브라우저 프로세스 찾기 (Windows 전용 — 다른 OS면 빈 배열).
+// Chromium은 같은 user-data-dir 로 두 번째 인스턴스를 띄우면 기존 창에 위임하고 즉시 종료한다.
+// 그러면 Playwright는 CDP 파이프를 잃고 "Target page, context or browser has been closed" 로 죽고,
+// 더 나쁘게는 돌아가던 녹화 창에 빈 탭이 열려 제목이 바뀌며 OBS 윈도우 캡처가 끊긴다.
+// → 띄우기 전에 미리 확인해서, 원인을 알 수 있는 메시지로 멈춘다.
+async function findProfileHolders(userDataDir) {
+  if (process.platform !== 'win32') return [];
+  const ps = [
+    "Get-CimInstance Win32_Process -Filter \"Name='msedge.exe' or Name='chrome.exe'\"",
+    `| Where-Object { $_.CommandLine -like '*${userDataDir.replace(/'/g, "''")}*' }`,
+    '| ForEach-Object { $_.ProcessId }',
+  ].join(' ');
+  try {
+    const { stdout } = await execFileP('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { timeout: 15000 });
+    return stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  } catch (_) { return []; } // 조회 실패는 무시 — 가드일 뿐, 실행을 막을 이유는 아니다
+}
+
+async function ensureProfileFree(userDataDir) {
+  const pids = await findProfileHolders(userDataDir);
+  if (!pids.length) return;
+
+  // --kill-browser 를 준 경우에만 정리한다. 진짜 녹화 중일 수도 있어 기본값은 '멈춤'.
+  if (process.argv.includes('--kill-browser')) {
+    log(`🧹 자동화 브라우저 ${pids.length}개 강제 종료 (--kill-browser)`);
+    await execFileP('taskkill', ['/F', ...pids.flatMap((p) => ['/PID', p])]).catch(() => {});
+    await new Promise((r) => setTimeout(r, 1500)); // 프로필 잠금 해제 대기
+    return;
+  }
+
+  throw new Error(
+    [
+      `자동화 브라우저가 이미 실행 중입니다 (PID ${pids.join(', ')}).`,
+      '',
+      '  · 녹화(pnpm start)나 캡처(pnpm shot)가 돌고 있다면 → 끝난 뒤에 실행하세요.',
+      '    지금 강행하면 돌아가던 녹화 창에 빈 탭이 열려 OBS 캡처가 끊깁니다.',
+      '  · 아무것도 안 도는데 이 메시지가 뜨면(Ctrl+C 로 끊어 남은 유령 프로세스) → 같은 명령에',
+      '    --kill-browser 를 붙여 다시 실행하세요.',
+    ].join('\n'),
+  );
+}
 
 // Edge 세션 복원 차단 — 직전 실행이 비정상 종료(크래시·강제 종료)되면 Edge가 지난 탭을 되살린다.
 // 그러면 탭이 2개가 되어 창 제목이 "REC-AUTOMATION 외 페이지 1개"로 바뀌고,
@@ -34,6 +80,7 @@ let manualLogin = false;
 // viewport: null(기본) = 창 크기를 그대로 씀(녹화용 — 전체화면이 곧 캡처 영역).
 // viewport: {width,height} = 크기를 명시 고정(캡처용 — 모니터 해상도와 무관하게 결과물 폭 고정).
 export async function launchSession({ headless = false, viewport = null } = {}) {
+  await ensureProfileFree(config.userDataDir); // 같은 프로필을 쓰는 브라우저가 떠 있으면 여기서 멈춤
   await clearRestoreState(config.userDataDir); // 브라우저 뜨기 전에 — 지난 탭이 되살아나지 않도록
   const context = await chromium.launchPersistentContext(config.userDataDir, {
     headless,
