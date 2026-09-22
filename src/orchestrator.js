@@ -6,12 +6,13 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { config } from './core/config.js';
 import { log, err } from './core/logger.js';
-import { launchSession, ensureLoggedIn, isLoggedIn } from './browser/session.js';
+import { launchSession, ensureLoggedIn, isLoggedIn, siteOf } from './browser/session.js';
 import { openContent, getContentTitle } from './browser/navigator.js';
 import { installProbe, VideoController } from './browser/videoProbe.js';
 import { ObsRecorder } from './recorder/obsRecorder.js';
 import { DriveClient, md5OfFile } from './drive/driveClient.js';
 import { loadCatalog, setSkip } from './core/catalog.js';
+import { siteForItems } from './sites/index.js';
 import { sanitize } from './core/filename.js';
 import { notifyDone, notifyFail, notifyLogin, notifyStopped } from './core/notify.js';
 
@@ -41,9 +42,9 @@ export async function run(catalogName, { reverse = false } = {}) {
   log(`📋 '${catalogName}': 총 ${items.length} · 완료 ${doneIds.size} · 영상없음 ${novideoN} · 남음 ${todo.length}${config.force ? ' · [FORCE]' : ''}${reverse ? ' · [역순]' : ''}`);
   if (!todo.length) { log('할 일 없음.'); return; }
 
-  const context = await launchSession();
+  const context = await launchSession({ site: siteForItems(items) });
   const bus = await installProbe(context, config.selectors.video);
-  if (!(await isLoggedIn(context))) await notifyLogin();
+  if (!(await isLoggedIn(context))) await notifyLogin(siteOf(context).label);
   await ensureLoggedIn(context);
 
   const obs = new ObsRecorder(config.obs);

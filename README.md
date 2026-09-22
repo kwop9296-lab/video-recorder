@@ -2,6 +2,7 @@
 
 네이버 프리미엄 콘텐츠(시황 등) 영상을 **Playwright(Edge) + OBS**로 자동 녹화하고, **구글 드라이브**에 업로드하는 도구.
 같은 목록을 대상으로 **페이지 자체를 PNG로 캡처**하는 모드(`pnpm shot`)도 있다.
+사이트는 **네이버 프리미엄콘텐츠**와 **나주다 인사이트 뷰(나인뷰, najuda.com)** 를 지원한다 — 사이트별로 다른 부분만 `src/sites/` 어댑터에 두고 나머지는 공용이다.
 완료 여부는 드라이브를 기준으로 판단하며, 언제 멈춰도(항상 녹화 도중 STOP) 다음에 이어서 진행한다.
 
 ---
@@ -36,6 +37,7 @@ pnpm shot  →  같은 catalog를 순회하되 녹화 대신:
 - **완료 기준 = 구글 드라이브에 그 영상 파일이 있음.** (로컬 파일 유무는 무관)
 - 로컬 파일(`recordings/`)은 삭제하지 않고 보관하며, 재녹화 시 덮어쓴다.
 - **Edge**를 쓰는 이유: 개인 크롬(chrome.exe)과 다른 앱(msedge.exe)이라 **오디오를 분리**할 수 있고, OBS가 개인 크롬을 잘못 잡지 않는다.
+- **사이트는 URL로 자동 판별**한다(catalog에 따로 적지 않는다). 사이트마다 브라우저 프로필이 분리돼 있어(`.userdata-msedge`, `.userdata-msedge-najuda`) 네이버 녹화와 나인뷰 캡처를 한 PC에서 동시에 돌려도 서로 방해하지 않는다.
 
 ---
 
@@ -101,6 +103,15 @@ pnpm setup:window "https://contents.premium.naver.com/no1/stock/contents/아무�
 - Edge 창이 뜨면 **네이버 직접 로그인** ("로그인 상태 유지" 체크). 이후 `.userdata-msedge` 프로필에 유지된다.
 - 영상이 1080p 전체화면으로 재생되면 OK. (이 창을 켜둔 채로 다음 OBS 설정 진행)
 
+### 3') 나인뷰(najuda.com) 로그인 — 나인뷰를 쓸 때만
+```powershell
+pnpm login najuda
+```
+- 네이버와 **다른 사이트·다른 계정**이라 로그인도 따로 한다. 프로필은 `.userdata-msedge-najuda` 로 분리 저장된다.
+- 창이 뜨면 **직접 아이디/비밀번호 입력**. 이 도구는 비밀번호를 저장하지도 입력하지도 않는다.
+- 로그인이 확인되면 등록된 목록 페이지를 열어준다 — 글이 잠금(🔒) 없이 보이면 정상. 확인 후 Ctrl+C.
+- 나인뷰는 PHP 세션이라 네이버보다 만료가 잦다. 만료되면 `pnpm shot` 이 로그인 대기로 멈추고 ntfy로 🔐 알림이 온다 → `pnpm login najuda` 로 다시 로그인.
+
 ### 4) OBS 설정
 - **도구 → WebSocket 서버 설정**: 서버 활성화, 포트 `4455`, 비밀번호 설정 → `.env`의 `OBS_WS_PASSWORD`에 입력
 - **설정 → 비디오**: 캔버스/출력 `1920x1080`, `30`fps
@@ -150,8 +161,19 @@ pnpm start no1-stock
 - 새 대상이 생기면 다른 이름으로: `pnpm urls "<다른카테고리URL>" other-name` → `pnpm start other-name`
 - 이름↔URL 매핑은 `data/sources.json`에 쌓인다(`data/`는 git 제외 → **PC별 로컬 설정**). 같은 이름을 다른 URL로 다시 돌리면 그 URL로 갱신된다.
 - `pnpm urls all`은 한 대상이 실패해도 멈추지 않고 나머지를 계속 돌린 뒤, 맨 끝에 이름별 `신규/남음` 요약을 찍는다.
-- ⚠ **녹화·캡처가 도는 중에 `pnpm urls`/`pnpm shot`을 같이 돌리지 말 것** — 브라우저 프로필이 하나뿐이라, 나중 실행이 돌아가던 창에 빈 탭을 열어 창 제목이 바뀌고 **OBS 캡처가 끊긴다**. 실수로 겹치면 나중 명령이 `자동화 브라우저가 이미 실행 중입니다` 로 멈추도록 막아두었다.
+- ⚠ **같은 사이트의 명령을 동시에 돌리지 말 것** — 사이트별로 브라우저 프로필이 하나라, 나중 실행이 돌아가던 창에 빈 탭을 열어 창 제목이 바뀌고 **OBS 캡처가 끊긴다**. 실수로 겹치면 나중 명령이 `자동화 브라우저가 이미 실행 중입니다` 로 멈추도록 막아두었다. (네이버 녹화 + 나인뷰 캡처처럼 **다른 사이트**끼리는 프로필이 달라 동시에 돌려도 된다)
 - **테스트**: `.env`의 `MAX_RECORD_SEC=60` 이면 각 영상을 60초만 녹화. 실제 운영은 **비워둔다**.
+
+**나인뷰(najuda.com)** 도 같은 명령을 쓴다 — 코스 탭 URL을 그대로 등록하면 된다:
+```powershell
+pnpm login najuda                                                          # 최초 1회
+pnpm urls "https://najuda.com/nainview/course.php?nv_course_id=6&tab=38" mimosa
+pnpm shot mimosa                                                           # 캡처 (OBS 불필요)
+```
+- 탭(카테고리) 하나가 catalog 하나다. 다른 탭도 받고 싶으면 다른 이름으로 한 번 더 등록한다.
+- 목록은 무한스크롤이 아니라 **20개씩 페이지**라, 수집기가 `&page=2,3,...` 를 끝까지 따라간다.
+- 글 ID는 URL 경로가 아니라 **`board_id`+`no`** 로 잡는다(`b38-n12`). `/nineview/`·`/nainview/` 두 경로가 같은 글이라 경로로 잡으면 중복되기 때문.
+- 글 안의 영상은 **캡처 대상이 아니다** — 페이지에 보이는 그대로(정지화면)만 남는다.
 
 ### 페이지 캡처 (`pnpm shot`)
 
@@ -167,7 +189,8 @@ pnpm shot no1-stock
 - **캡처 대상은 catalog 전체 항목** — 녹화에서 `novideo`로 걸러진 것도 포함한다(영상이 없어도 글은 있으므로).
 - **완료 판정은 녹화와 완전히 분리**돼 있다: 드라이브의 `<catalog>-shots` 폴더 기준. 녹화 완료 여부에 영향을 주지도 받지도 않는다.
 - 결과물 폭은 **항상 1440px 고정**(모니터 해상도와 무관) — 두 PC로 나눠 돌려도 같은 크기로 나온다.
-- 문서가 아주 길어 한 장 한계(약 16000px)를 넘으면 **자동으로 여러 장(`<제목>_1.png`, `_2.png`…)으로 분할**한다. 이때는 **전부 업로드된 뒤에야** 완료로 친다(중간에 끊기면 다음 실행에서 다시 캡처).
+- 문서가 아주 길어 한 장 한계(약 16000px)를 넘으면 **나눠 찍은 뒤 세로로 이어붙여 다시 한 장으로** 만든다(`sharp`). 결과는 `<제목>.png` 하나 — 길이가 얼마든 **글 하나 = 파일 하나**다.
+- 이어붙이기 한도는 60000px(`config.capture.stitchMaxHeight`). 그보다 긴 문서이거나 `sharp` 가 없으면 조각(`<제목>_1.png`, `_2.png`…) 그대로 남기며, 이때는 **전부 업로드된 뒤에야** 완료로 친다(중간에 끊기면 다음 실행에서 다시 캡처).
 - 알림은 항목마다 오지 않고 **세션 끝에 요약 1건** + 실패 시 개별 알림.
 - 로컬 보관: `captures/<catalog>/<제목>.png`
 
@@ -181,6 +204,7 @@ pnpm shot no1-stock
 | `pnpm urls all` | 등록된 catalog 전부 갱신 (브라우저 1회 실행으로 순차 처리) |
 | `pnpm urls "<URL>" <catalog>` | URL을 이름에 등록(`data/sources.json`) + 갱신 — 최초 1회 |
 | `pnpm urls` | 등록된 이름/URL 목록 보기 |
+| `pnpm login <사이트\|catalog\|URL>` | 그 사이트 프로필에 로그인 창 띄우기 (최초 1회·세션 만료 시). 예: `pnpm login najuda` |
 | `pnpm start [catalog] [reverse]` | catalog의 미완료 녹화 → 드라이브 업로드 (catalog 하나면 이름 생략 가능). `reverse`(=`-r`/`desc`): 아래에서부터 녹화 |
 | `pnpm shot [catalog] [reverse]` | catalog 페이지를 PNG로 캡처 → `<catalog>-shots` 폴더에 업로드. OBS 불필요. 인자 규칙은 `start`와 동일 |
 | `pnpm obs:check [--rec]` | OBS 연결/해상도 확인 (`--rec`: 5초 테스트 녹화) |
@@ -254,10 +278,13 @@ video-recorder/
 ├─ recordings/               # 로컬 보관본 <제목>.mkv
 ├─ captures/<catalog>/       # 로컬 캡처본 <제목>.png
 ├─ .userdata-msedge/         # Edge 프로필(네이버 로그인 세션, git 제외)
+├─ .userdata-msedge-najuda/  # Edge 프로필(나인뷰 로그인 세션, git 제외)
 └─ src/
    ├─ index.js               # 진입점 (pnpm start)
    ├─ capture.js             # 진입점 (pnpm shot)
    ├─ list.js                # pnpm urls
+   ├─ login.js               # pnpm login
+   ├─ sites/                 # 사이트 어댑터 (naver·najuda) — 로그인 판정/목록 수집/콘텐츠 ID
    ├─ orchestrator.js        # 지휘: 미완료 순회→녹화→업로드
    ├─ captureOrchestrator.js # 지휘(캡처): 미완료 순회→PNG 캡처→업로드
    ├─ browser/               # session(로그인)·navigator·videoProbe(재생/신호)·pageCapture
@@ -278,15 +305,19 @@ video-recorder/
 | `자동화 브라우저가 이미 실행 중입니다` | 같은 프로필(`.userdata-*`)을 쓰는 Edge가 떠 있다. **녹화/캡처가 도는 중이면 끝난 뒤에** 실행할 것. 아무것도 안 도는데 뜨면(Ctrl+C 로 끊어 남은 유령 프로세스) 같은 명령에 `--kill-browser` 를 붙여 재실행 |
 | `GDRIVE_ROOT 미설정` | `.env`에 `GDRIVE_ROOT` 지정 |
 | `구글 OAuth 자격증명 없음` | `.env`에 `GOOGLE_OAUTH_*` 3개 확인 |
-| 시작 시 로그인 페이지가 뜸 | 네이버 세션 만료 → Edge 창에서 재로그인(“로그인 상태 유지”). ntfy로 🔐 알림도 옴 |
+| 시작 시 로그인 페이지가 뜸 | 세션 만료 → 열린 Edge 창에서 재로그인(네이버는 “로그인 상태 유지” 체크). ntfy로 🔐 알림도 옴. 미리 하려면 `pnpm login <사이트>` |
+| 나인뷰가 자꾸 로그아웃됨 | PHP 세션이라 수명이 짧다. 캡처 시작 전에 `pnpm login najuda` 로 한 번 갱신하고 돌리면 세션 중간에 멈추지 않는다 |
+| 나인뷰 목록이 **20개만** 잡힘 | 페이지네이션(`&page=`)을 못 따라간 것. 목록 URL에 이미 `page=` 가 붙어 있으면 빼고 등록할 것 |
 | OBS 녹화가 **검은 화면** | 윈도우 캡처를 `Windows Graphics Capture` + `REC-AUTOMATION`으로. 아니면 화면 캡처로 |
 | 녹화에 **소리 없음/이중음** | 오디오 소스를 응용 프로그램 오디오 캡처 하나만. VB-CABLE 라우팅 확인 |
 | 소리가 **스피커로 들림** | 볼륨 믹서에서 Edge 출력 = `CABLE Input` 인지 확인 |
 | `urls` 제목이 "동영상"만 | 목록 페이지 구조가 다름 → 그 페이지 HTML 공유해 셀렉터 조정 |
 | 알림이 안 옴 | `NTFY_TOPIC` 설정 + 폰 앱에서 같은 토픽 구독 확인 |
 | `shot` 캡처에 **이미지가 빈칸** | lazy 로딩이 덜 걸린 것. 본문이 페이지가 아닌 내부 컨테이너에서 스크롤되는 구조일 수 있다 → 그 셀렉터 확인 후 `pageCapture.js`의 스크롤 대상 조정 |
-| `shot` 결과가 **여러 장으로 쪼개짐** | 정상. 문서가 한 장 한계(16000px)를 넘으면 자동 분할한다 (`config.capture.splitChunk`로 장당 높이 조절) |
+| `shot` 결과가 **여러 장으로 쪼개짐** | 문서가 60000px을 넘었거나 `sharp` 설치가 안 된 것. 보통은 나눠 찍은 뒤 한 장으로 이어붙인다 (`config.capture.stitch` / `stitchMaxHeight`) |
 | `shot` 이 같은 항목을 **매번 다시 캡처** | 분할 업로드가 중간에 끊겨 완료 표식이 안 붙은 것. 실패 알림의 사유를 확인 (네트워크/용량) |
+| 업로드 중 `HTTP 502` / `ECONNRESET` | 구글 쪽 일시적 오류. 2→4→8→16초로 **자동 재시도**하고(`↻` 로그), 그래도 안 되면 그 항목만 실패로 남겨 다음 실행에서 재시도한다 |
+| 업로드가 `HTTP 403` 으로 **즉시** 실패 | 속도 제한이 아니라 권한 문제(재시도해도 소용없음) → `GOOGLE_OAUTH_*` 와 드라이브 접근 권한 확인 |
 
 ---
 

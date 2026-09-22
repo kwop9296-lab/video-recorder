@@ -4,14 +4,14 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from './config.js';
+import { siteForUrl } from '../sites/index.js';
 
 const DIR = path.join(config.root, 'data', 'catalogs');
 export const catalogPath = (name) => path.join(DIR, `${name}.json`);
 
-// URL 끝의 콘텐츠 ID (쿼리 붙어도 안전)
+// 콘텐츠 ID 규칙은 사이트마다 다르다(네이버=URL 끝 토큰, 나인뷰=board_id+no) → 어댑터에 위임.
 export function contentId(url) {
-  try { return new URL(url).pathname.split('/').filter(Boolean).pop() || url; }
-  catch (_) { return url; }
+  return siteForUrl(url).contentId(url);
 }
 
 export async function loadCatalog(name) {

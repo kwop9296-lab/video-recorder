@@ -8,11 +8,16 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 // 자동화 브라우저 채널: 'chrome' | 'msedge'. Edge는 개인 크롬과 다른 앱이라 오디오 분리가 쉬움.
 const browserChannel = process.env.BROWSER || 'chrome';
 
+// 브라우저별로 프로필(로그인 세션) 분리 — chrome↔edge 는 프로필 공유 불가
+const profileBase = browserChannel === 'chrome' ? '.userdata' : `.userdata-${browserChannel}`;
+
 export const config = {
   root,
   browserChannel,
-  // 브라우저별로 프로필(로그인 세션) 분리 — chrome↔edge 는 프로필 공유 불가
-  userDataDir: path.join(root, browserChannel === 'chrome' ? '.userdata' : `.userdata-${browserChannel}`),
+  userDataDir: path.join(root, profileBase), // 기본(네이버) 프로필
+  // 사이트별 프로필 분리 — 네이버 녹화와 다른 사이트 캡처를 한 PC에서 동시에 돌릴 수 있게.
+  // 네이버는 기존 경로를 그대로 써서 재로그인이 필요 없다.
+  userDataDirFor: (siteId) => path.join(root, siteId && siteId !== 'naver' ? `${profileBase}-${siteId}` : profileBase),
   recordDir: process.env.RECORD_DIR ? path.resolve(root, process.env.RECORD_DIR) : path.join(root, 'recordings'),
   captureDir: process.env.CAPTURE_DIR ? path.resolve(root, process.env.CAPTURE_DIR) : path.join(root, 'captures'),
 
@@ -21,6 +26,9 @@ export const config = {
 
   // 자동화 창을 개인 크롬과 구분하기 위한 고정 제목 (OBS 윈도우 캡처에서 이걸로 잠금)
   windowTitle: 'REC-AUTOMATION',
+  // 사이트별 창 제목 — 두 사이트를 동시에 돌려도 OBS가 엉뚱한 창을 잡지 않게.
+  // 네이버는 기존 제목 그대로 (OBS 소스 재설정 불필요).
+  windowTitleFor: (siteId) => (siteId && siteId !== 'naver' ? `REC-AUTOMATION-${String(siteId).toUpperCase()}` : 'REC-AUTOMATION'),
 
   obs: {
     url: process.env.OBS_WS_URL || 'ws://127.0.0.1:4455',
@@ -51,6 +59,8 @@ export const config = {
     scrollDelay: 350,     // 스크롤 한 칸마다 대기
     maxScrollLoops: 400,  // 무한 스크롤 안전장치
     settleDelay: 800,     // 맨 위 복귀 후 안정화 대기
+    stitch: true,         // 분할된 조각을 다시 세로로 이어붙여 '긴 한 장'으로 만든다
+    stitchMaxHeight: 60000, // 이 높이를 넘으면 이어붙이지 않고 조각 그대로 둔다(메모리/뷰어 한계)
   },
 
   // 테스트용: >0 이면 영상이 안 끝나도 이 초수에서 녹화 강제 종료 (예: 60)

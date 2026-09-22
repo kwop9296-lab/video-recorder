@@ -1,6 +1,10 @@
-// 브라우저 세션 — 지속 컨텍스트 실행 + 네이버 로그인 상태 관리.
+// 브라우저 세션 — 지속 컨텍스트 실행 + 로그인 상태 관리.
 // 비밀번호는 절대 자동 입력하지 않는다. 최초 1회 사용자가 직접 로그인하고,
 // 이후엔 .userdata 프로필에 저장된 세션을 재사용한다.
+//
+// 사이트마다 다른 부분(로그인 판정·로그인 URL)은 src/sites 의 어댑터가 가진다.
+// launchSession 에서 받은 어댑터를 컨텍스트에 붙여두므로, 호출부는 예전처럼
+// ensureLoggedIn(context) 만 불러도 해당 사이트 기준으로 동작한다.
 
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -9,6 +13,7 @@ import { promisify } from 'node:util';
 import { chromium } from 'playwright';
 import { config } from '../core/config.js';
 import { log } from '../core/logger.js';
+import { DEFAULT_SITE } from '../sites/index.js';
 
 const execFileP = promisify(execFile);
 
@@ -74,15 +79,20 @@ async function clearRestoreState(userDataDir) {
   } catch (_) {} // 프로필 최초 생성 등 — 없으면 그냥 넘어간다
 }
 
+// 컨텍스트에 붙여두는 사이트 어댑터 (호출부가 매번 넘기지 않아도 되도록)
+const SITE = Symbol('site');
+export const siteOf = (context) => context[SITE] || DEFAULT_SITE;
+
 // 수동 로그인 중에는 여분 탭 정리를 멈춘다 — 사용자가 직접 여는 창(팝업)을 닫아버리지 않도록.
 let manualLogin = false;
 
 // viewport: null(기본) = 창 크기를 그대로 씀(녹화용 — 전체화면이 곧 캡처 영역).
 // viewport: {width,height} = 크기를 명시 고정(캡처용 — 모니터 해상도와 무관하게 결과물 폭 고정).
-export async function launchSession({ headless = false, viewport = null } = {}) {
-  await ensureProfileFree(config.userDataDir); // 같은 프로필을 쓰는 브라우저가 떠 있으면 여기서 멈춤
-  await clearRestoreState(config.userDataDir); // 브라우저 뜨기 전에 — 지난 탭이 되살아나지 않도록
-  const context = await chromium.launchPersistentContext(config.userDataDir, {
+export async function launchSession({ headless = false, viewport = null, site = DEFAULT_SITE } = {}) {
+  const userDataDir = config.userDataDirFor(site.id);
+  await ensureProfileFree(userDataDir); // 같은 프로필을 쓰는 브라우저가 떠 있으면 여기서 멈춤
+  await clearRestoreState(userDataDir); // 브라우저 뜨기 전에 — 지난 탭이 되살아나지 않도록
+  const context = await chromium.launchPersistentContext(userDataDir, {
     headless,
     channel: config.browserChannel,
     viewport,
@@ -107,14 +117,16 @@ export async function launchSession({ headless = false, viewport = null } = {}) 
     const pin = () => { try { if (document.title !== title) document.title = title; } catch (_) {} };
     pin();
     setInterval(pin, 500);
-  }, config.windowTitle);
+  }, config.windowTitleFor(site.id));
+
+  context[SITE] = site; // 이후 isLoggedIn/ensureLoggedIn 이 어떤 사이트인지 알 수 있게
 
   // 안전망 — 그래도 살아남은 복원 탭은 닫는다. 자동화용 첫 탭만 남긴다.
   const main = context.pages()[0] || (await context.newPage());
   const closeExtra = async (p) => {
     if (p === main || manualLogin) return;
     await p.close().catch(() => {});
-    log('🧹 여분 탭 정리 — 창 제목을 REC-AUTOMATION 하나로 유지');
+    log(`🧹 여분 탭 정리 — 창 제목을 ${config.windowTitleFor(site.id)} 하나로 유지`);
   };
   for (const p of context.pages()) await closeExtra(p);
   // 복원 탭은 launchPersistentContext 반환보다 늦게 붙기도 하고, 녹화 중 사이트가 새 탭을
@@ -124,19 +136,20 @@ export async function launchSession({ headless = false, viewport = null } = {}) 
   return context;
 }
 
-// NID_AUT / NID_SES 쿠키로 로그인 여부 판정 (DOM 비의존, 신뢰도 높음)
+// 로그인 여부 판정은 사이트 어댑터에 위임 (네이버=NID 쿠키, 나인뷰=페이지 확인)
 export async function isLoggedIn(context) {
-  const cookies = await context.cookies('https://www.naver.com');
-  return cookies.some((c) => c.name === 'NID_AUT') && cookies.some((c) => c.name === 'NID_SES');
+  return siteOf(context).isLoggedIn(context);
 }
 
 // 로그인 안돼있으면 로그인 페이지를 열고 사용자가 직접 로그인할 때까지 대기.
-export async function ensureLoggedIn(context, { timeout = 300000 } = {}) {
-  if (await isLoggedIn(context)) { log('🔐 로그인 상태 확인됨 (세션 재사용)'); return; }
+// returnTo: 로그인 후 돌아갈 주소(사이트가 지원하면). 확인용 페이지를 바로 띄우는 데 쓴다.
+export async function ensureLoggedIn(context, { timeout = 300000, returnTo = '' } = {}) {
+  const site = siteOf(context);
+  if (await isLoggedIn(context)) { log(`🔐 ${site.label} 로그인 상태 확인됨 (세션 재사용)`); return; }
 
   const page = context.pages()[0] || (await context.newPage());
-  await page.goto('https://nid.naver.com/nidlogin.login').catch(() => {});
-  log('⚠ 네이버 로그인이 필요합니다 → 열린 창에서 직접 로그인하세요 ("로그인 상태 유지" 체크 권장)');
+  await page.goto(site.loginUrlFor ? site.loginUrlFor(returnTo) : site.loginUrl).catch(() => {});
+  log(`⚠ ${site.label} 로그인이 필요합니다 → ${site.loginHint}`);
 
   manualLogin = true; // 로그인 동안엔 여분 탭 정리 중단 (사용자가 연 창을 닫지 않도록)
   try {

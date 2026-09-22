@@ -10,8 +10,9 @@ import 'dotenv/config';
 import { config } from './core/config.js';
 import { log } from './core/logger.js';
 import { launchSession, ensureLoggedIn } from './browser/session.js';
-import { contentId, mergeCatalog, saveCatalog, catalogPath } from './core/catalog.js';
+import { mergeCatalog, saveCatalog, catalogPath } from './core/catalog.js';
 import { loadSources, setSource, sourcesPath } from './core/sources.js';
+import { siteForUrl } from './sites/index.js';
 import { DriveClient } from './drive/driveClient.js';
 
 const USAGE = [
@@ -65,79 +66,38 @@ if (!config.drive.rootFolder) {
   process.exit(1);
 }
 
-// ── 목록 페이지 수집 (브라우저 한 번만 띄워 여러 대상을 순회)
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const RE = /\/contents\/[0-9A-Za-z]{8,}$/;
-const isPlaceholder = (t) => !t || /^(동영상|재생|재생하기|이미지|썸네일)$/.test(t);
-
-async function collectList(page, listUrl) {
-  const found = new Map(); // url -> title
-
-  const collect = async () => {
-    const items = await page.evaluate(() => {
-      const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
-      let cards = [...document.querySelectorAll('.content_item_inner')].map((card) => {
-        const a = card.querySelector('a[href*="/contents/"]');
-        const t = card.querySelector('.content_title') || card.querySelector('strong, h2, h3, h4, [class*="title" i]');
-        return a ? { url: a.href.split(/[?#]/)[0], title: clean(t && t.textContent).slice(0, 120) } : null;
-      }).filter(Boolean);
-      if (!cards.length) {
-        cards = [...document.querySelectorAll('a[href*="/contents/"]')].map((a) => {
-          const t = a.querySelector('.content_title, strong, h3');
-          return { url: a.href.split(/[?#]/)[0], title: clean(t && t.textContent).slice(0, 120) };
-        });
-      }
-      return cards;
-    });
-    for (const it of items) {
-      if (!RE.test(it.url)) continue;
-      const prev = found.get(it.url);
-      if (!found.has(it.url) || (isPlaceholder(prev) && !isPlaceholder(it.title))) found.set(it.url, it.title);
-    }
-  };
-
-  log('🌐 목록 이동:', listUrl);
-  await page.goto(listUrl, { waitUntil: 'domcontentloaded' });
-  log('목록 로딩(끝까지 스크롤하며 수집)...');
-  await sleep(1500);
-  for (let k = 0; k < 3; k++) { await collect(); await sleep(500); }
-
-  let stable = 0;
-  for (let i = 0; i < 500 && stable < 5; i++) {
-    const before = found.size;
-    await collect();
-    await page.evaluate(() => {
-      const el = document.scrollingElement || document.documentElement;
-      el.scrollBy(0, Math.round(el.clientHeight * 0.9));
-    }).catch(() => {});
-    await sleep(900);
-    await collect();
-    stable = found.size === before ? stable + 1 : 0;
-    if (i % 10 === 0) log(`  ...누적 ${found.size}개`);
-  }
-  return found;
+// ── 목록 페이지 수집
+// 대상을 사이트별로 묶어, 사이트마다 브라우저를 한 번만 띄워 순차 수집한다.
+// (사이트마다 프로필이 달라서 한 창으로는 두 사이트를 볼 수 없다)
+const bySite = new Map(); // siteId -> { site, targets[] }
+for (const t of targets) {
+  const site = siteForUrl(t.url);
+  if (!bySite.has(site.id)) bySite.set(site.id, { site, targets: [] });
+  bySite.get(site.id).targets.push(t);
 }
 
-const context = await launchSession({ headless: config.headless });
-await ensureLoggedIn(context);
-const page = context.pages()[0];
-
-// 한 대상이 실패해도 나머지는 계속 진행 (all 로 여러 개 돌 때 중간에 멈추지 않게)
 const collected = []; // { name, items }
-for (let i = 0; i < targets.length; i++) {
-  const t = targets[i];
-  if (targets.length > 1) log(`\n──── ${t.name} (${i + 1}/${targets.length}) ────`);
+for (const { site, targets: group } of bySite.values()) {
+  if (bySite.size > 1) log(`\n════ ${site.label} ════`);
+  const context = await launchSession({ headless: config.headless, site });
   try {
-    const found = await collectList(page, t.url);
-    collected.push({
-      name: t.name,
-      items: [...found].map(([url, title]) => ({ id: contentId(url), title: title || contentId(url), url })),
-    });
-  } catch (e) {
-    console.error(`❌ '${t.name}' 수집 실패 —`, e.message);
+    // 로그인이 필요하면 첫 대상 목록으로 돌아오게 한다 — 최초 등록 때 바로 확인이 된다.
+    await ensureLoggedIn(context, { returnTo: group[0].url });
+    const page = context.pages()[0] || (await context.newPage());
+    // 한 대상이 실패해도 나머지는 계속 진행 (all 로 여러 개 돌 때 중간에 멈추지 않게)
+    for (let i = 0; i < group.length; i++) {
+      const t = group[i];
+      if (targets.length > 1) log(`\n──── ${t.name} (${i + 1}/${group.length}) ────`);
+      try {
+        collected.push({ name: t.name, items: await site.collectList(page, t.url) });
+      } catch (e) {
+        console.error(`❌ '${t.name}' 수집 실패 —`, e.message);
+      }
+    }
+  } finally {
+    await context.close();
   }
 }
-await context.close();
 
 // ── catalog 병합 + 완료 표시 (브라우저는 이미 닫힘)
 // Drive 클라이언트는 한 번만 만들고, 대상별로 하위폴더만 조회한다.

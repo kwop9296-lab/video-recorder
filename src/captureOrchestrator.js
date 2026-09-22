@@ -12,6 +12,7 @@ import { getContentTitle } from './browser/navigator.js';
 import { openPage, capturePage } from './browser/pageCapture.js';
 import { DriveClient, md5OfFile } from './drive/driveClient.js';
 import { loadCatalog } from './core/catalog.js';
+import { siteForItems } from './sites/index.js';
 import { sanitize } from './core/filename.js';
 import { notifyFail, notifyLogin, notifyStopped, notifyCaptured } from './core/notify.js';
 
@@ -22,6 +23,7 @@ export async function run(catalogName, { reverse = false } = {}) {
   const items = await loadCatalog(catalogName);
   if (!items.length) { log(`catalog '${catalogName}' 이 비어있음. 먼저 pnpm urls 로 채우세요.`); return; }
 
+  const site = siteForItems(items); // catalog 항목 URL로 사이트 판정 (프로필·로그인 방식이 갈림)
   const outDir = path.join(config.captureDir, catalogName);
   await fsp.mkdir(outDir, { recursive: true });
 
@@ -42,8 +44,8 @@ export async function run(catalogName, { reverse = false } = {}) {
   log(`📋 '${catalogName}' 캡처: 총 ${items.length} · 완료 ${doneIds.size} · 남음 ${todo.length}${config.force ? ' · [FORCE]' : ''}${reverse ? ' · [역순]' : ''}`);
   if (!todo.length) { log('할 일 없음.'); return; }
 
-  const context = await launchSession({ headless: config.headless, viewport: config.capture.viewport });
-  if (!(await isLoggedIn(context))) await notifyLogin();
+  const context = await launchSession({ headless: config.headless, viewport: config.capture.viewport, site });
+  if (!(await isLoggedIn(context))) await notifyLogin(site.label);
   await ensureLoggedIn(context);
 
   const page = context.pages()[0] || (await context.newPage());
@@ -71,7 +73,7 @@ export async function run(catalogName, { reverse = false } = {}) {
     }
     log(`\n[${i + 1}/${todo.length}] ${v.title || v.url}`);
     try {
-      const { title, files } = await captureOne(page, outDir, v);
+      const { title, files } = await captureOne(page, outDir, v, site);
       // 이전 시도의 잔재(끊긴 분할본·FORCE 재캡처분)를 먼저 치운다 — 중복 누적 방지.
       for (const f of config.force ? await drive.listByContentId(folderId, v.id) : existing) {
         await drive.deleteFile(f.id).catch(() => {});
@@ -105,8 +107,9 @@ export async function run(catalogName, { reverse = false } = {}) {
 }
 
 // 한 항목 캡처 → { title, files }
-async function captureOne(page, outDir, v) {
+async function captureOne(page, outDir, v, site) {
   await openPage(page, v.url);
+  if (site.assertAccessible) site.assertAccessible(page); // 로그인/권한 문제면 여기서 실패 처리
 
   const title = v.title || (await getContentTitle(page)) || v.id;
   log('  📄', title);

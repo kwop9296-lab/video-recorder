@@ -19,7 +19,7 @@ async function post(body, { title = 'Recorder', priority = 'default' } = {}) {
 
 export const notifyDone = (title) => post(`✅ ${title}`, { title: 'Recorded', priority: 'default' });
 export const notifyFail = (title, reason) => post(`❌ ${title}\n${reason}`, { title: 'Failed', priority: 'high' });
-export const notifyLogin = () => post('🔐 네이버 재로그인 필요 (세션 만료)', { title: 'Login needed', priority: 'max' });
+export const notifyLogin = (label = '네이버') => post(`🔐 ${label} 재로그인 필요 (세션 만료)`, { title: 'Login needed', priority: 'max' });
 export const notifyStopped = (n) => post(`⏹ 중단 — 이번 세션 ${n}개 완료`, { title: 'Stopped', priority: 'default' });
 // 캡처는 항목당 몇 초라 개별 알림이 너무 잦다 → 세션 끝에 요약 한 번만.
 export const notifyCaptured = (name, n) => post(`📸 ${name} — ${n}개 캡처 완료`, { title: 'Captured', priority: 'default' });
