@@ -13,12 +13,13 @@ import { ObsRecorder } from './recorder/obsRecorder.js';
 import { DriveClient, md5OfFile } from './drive/driveClient.js';
 import { loadCatalog, setSkip } from './core/catalog.js';
 import { siteForItems } from './sites/index.js';
+import { resolveAccount } from './core/sources.js';
 import { sanitize } from './core/filename.js';
 import { notifyDone, notifyFail, notifyLogin, notifyStopped } from './core/notify.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export async function run(catalogName, { reverse = false } = {}) {
+export async function run(catalogName, { reverse = false, account = '' } = {}) {
   if (!config.drive.rootFolder) throw new Error('GDRIVE_ROOT 미설정 — .env 에 GDRIVE_ROOT 를 지정하세요.');
   const items = await loadCatalog(catalogName);
   if (!items.length) { log(`catalog '${catalogName}' 이 비어있음. 먼저 pnpm urls 로 채우세요.`); return; }
@@ -42,7 +43,7 @@ export async function run(catalogName, { reverse = false } = {}) {
   log(`📋 '${catalogName}': 총 ${items.length} · 완료 ${doneIds.size} · 영상없음 ${novideoN} · 남음 ${todo.length}${config.force ? ' · [FORCE]' : ''}${reverse ? ' · [역순]' : ''}`);
   if (!todo.length) { log('할 일 없음.'); return; }
 
-  const context = await launchSession({ site: siteForItems(items) });
+  const context = await launchSession({ site: siteForItems(items), account: await resolveAccount(catalogName, account) });
   const bus = await installProbe(context, config.selectors.video);
   if (!(await isLoggedIn(context))) await notifyLogin(siteOf(context).label);
   await ensureLoggedIn(context);

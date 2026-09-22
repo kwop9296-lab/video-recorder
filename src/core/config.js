@@ -11,13 +11,22 @@ const browserChannel = process.env.BROWSER || 'chrome';
 // 브라우저별로 프로필(로그인 세션) 분리 — chrome↔edge 는 프로필 공유 불가
 const profileBase = browserChannel === 'chrome' ? '.userdata' : `.userdata-${browserChannel}`;
 
+// 계정(같은 사이트의 두 번째 아이디) 꼬리표. 폴더·창 제목에 붙으므로 안전한 문자만 남긴다.
+// 빈 문자열 = 기본 계정 (기존 경로/제목 그대로).
+export const normalizeAccount = (a) =>
+  String(a || '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
+
+const suffixes = (siteId, account) => [siteId && siteId !== 'naver' ? siteId : '', normalizeAccount(account)].filter(Boolean);
+
 export const config = {
   root,
   browserChannel,
-  userDataDir: path.join(root, profileBase), // 기본(네이버) 프로필
-  // 사이트별 프로필 분리 — 네이버 녹화와 다른 사이트 캡처를 한 PC에서 동시에 돌릴 수 있게.
-  // 네이버는 기존 경로를 그대로 써서 재로그인이 필요 없다.
-  userDataDirFor: (siteId) => path.join(root, siteId && siteId !== 'naver' ? `${profileBase}-${siteId}` : profileBase),
+  userDataDir: path.join(root, profileBase), // 기본(네이버, 기본계정) 프로필
+  // 사이트·계정별 프로필 분리 — 네이버 녹화와 나인뷰 캡처를, 또 같은 사이트의 두 아이디를
+  // 한 PC에서 동시에 돌릴 수 있게. 네이버 기본계정은 기존 경로 그대로라 재로그인이 필요 없다.
+  //   naver/기본 → .userdata-msedge        najuda/기본 → .userdata-msedge-najuda
+  //   naver/sub  → .userdata-msedge-sub    najuda/sub  → .userdata-msedge-najuda-sub
+  userDataDirFor: (siteId, account = '') => path.join(root, [profileBase, ...suffixes(siteId, account)].join('-')),
   recordDir: process.env.RECORD_DIR ? path.resolve(root, process.env.RECORD_DIR) : path.join(root, 'recordings'),
   captureDir: process.env.CAPTURE_DIR ? path.resolve(root, process.env.CAPTURE_DIR) : path.join(root, 'captures'),
 
@@ -26,9 +35,9 @@ export const config = {
 
   // 자동화 창을 개인 크롬과 구분하기 위한 고정 제목 (OBS 윈도우 캡처에서 이걸로 잠금)
   windowTitle: 'REC-AUTOMATION',
-  // 사이트별 창 제목 — 두 사이트를 동시에 돌려도 OBS가 엉뚱한 창을 잡지 않게.
-  // 네이버는 기존 제목 그대로 (OBS 소스 재설정 불필요).
-  windowTitleFor: (siteId) => (siteId && siteId !== 'naver' ? `REC-AUTOMATION-${String(siteId).toUpperCase()}` : 'REC-AUTOMATION'),
+  // 사이트·계정별 창 제목 — 여럿을 동시에 돌려도 OBS가 엉뚱한 창을 잡지 않게.
+  // 네이버 기본계정은 기존 제목 그대로 (OBS 소스 재설정 불필요).
+  windowTitleFor: (siteId, account = '') => ['REC-AUTOMATION', ...suffixes(siteId, account)].join('-').toUpperCase(),
 
   obs: {
     url: process.env.OBS_WS_URL || 'ws://127.0.0.1:4455',

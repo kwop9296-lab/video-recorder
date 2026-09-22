@@ -2,6 +2,7 @@
 // reverse(=--reverse|-r|desc) : catalog를 아래에서부터 녹화. 같은 catalog를 두 PC에서 위/아래로 나눠 돌릴 때 사용.
 import { run } from './orchestrator.js';
 import { listCatalogNames } from './core/catalog.js';
+import { accountFromArgv } from './core/sources.js';
 
 // 방향 토큰은 플래그(--reverse/-r)뿐 아니라 맨 단어(reverse/desc)도 허용 — pnpm 플래그 전달 이슈 회피.
 const argv = process.argv.slice(2);
@@ -18,7 +19,7 @@ if (!name) {
 if (!names.includes(name)) { console.error(`catalog '${name}' 없음.  있는 것: ${names.join(', ') || '(없음)'}`); process.exit(1); }
 
 try {
-  await run(name, { reverse });
+  await run(name, { reverse, account: accountFromArgv(argv) });
   process.exit(0);
 } catch (e) {
   console.error('실행 오류:', e.message);

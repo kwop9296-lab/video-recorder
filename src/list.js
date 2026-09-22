@@ -1,5 +1,6 @@
 // 목록 가져오기 — 카테고리 목록 페이지에서 콘텐츠(제목+URL)를 긁어 종류별 catalog에 병합.
 //   pnpm urls "<목록페이지URL>" <catalog이름>   ← URL을 data/sources.json 에 자동 등록
+//   ... --account=<이름>                       ← 같은 사이트의 두 번째 아이디로 (한 번 등록하면 이후 자동)
 //   pnpm urls <catalog이름> [이름...]           ← 등록된 URL로 갱신 (여러 개 나열 가능)
 //   pnpm urls all                               ← 등록된 전부를 브라우저 한 번만 띄워 순차 갱신
 //   pnpm urls                                   ← 등록 목록 보기
@@ -11,7 +12,7 @@ import { config } from './core/config.js';
 import { log } from './core/logger.js';
 import { launchSession, ensureLoggedIn } from './browser/session.js';
 import { mergeCatalog, saveCatalog, catalogPath } from './core/catalog.js';
-import { loadSources, setSource, sourcesPath } from './core/sources.js';
+import { loadSources, setSource, sourcesPath, accountFromArgv } from './core/sources.js';
 import { siteForUrl } from './sites/index.js';
 import { DriveClient } from './drive/driveClient.js';
 
@@ -21,9 +22,12 @@ const USAGE = [
   '  pnpm urls all                          등록된 전부 갱신',
   '  pnpm urls "<카테고리 목록URL>" <이름>    URL 등록 + 갱신 (최초 1회)',
   '  pnpm urls                              등록 목록 보기',
+  '',
+  '  --account=<이름>   같은 사이트의 다른 아이디로 (등록 시 기록 → 이후엔 안 붙여도 됨)',
 ].join('\n');
 
 const isUrl = (s) => /^https?:\/\//i.test(s);
+const accountFlag = accountFromArgv();
 const argv = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const sources = await loadSources();
 const known = Object.keys(sources);
@@ -34,7 +38,10 @@ if (!argv.length) {
   console.log(USAGE);
   if (known.length) {
     console.log('\n등록된 catalog:');
-    for (const n of known) console.log(`  ${n.padEnd(14)} ${sources[n]}`);
+    for (const n of known) {
+      const acc = sources[n].account ? `  [계정: ${sources[n].account}]` : '';
+      console.log(`  ${n.padEnd(14)} ${sources[n].url}${acc}`);
+    }
     console.log(`\n📄 ${sourcesPath()}`);
   } else {
     console.log('\n(등록된 URL 없음 — URL과 이름을 함께 한 번 실행하면 자동 등록됩니다)');
@@ -43,21 +50,21 @@ if (!argv.length) {
 } else if (isUrl(argv[0])) {
   const [url, name] = argv;
   if (!name) { console.error('catalog 이름이 없습니다.\n\n' + USAGE); process.exit(1); }
-  if (await setSource(name, url)) log(`📌 '${name}' URL 등록 — 다음부터는  pnpm urls ${name}`);
-  targets = [{ name, url }];
+  if (await setSource(name, url, accountFlag || null)) log(`📌 '${name}' 등록${accountFlag ? ` (계정 ${accountFlag})` : ''} — 다음부터는  pnpm urls ${name}`);
+  targets = [{ name, url, account: accountFlag }];
 } else if (argv.length === 1 && /^all$/i.test(argv[0]) && !sources.all) {
   // 'all'이라는 이름의 catalog가 실제로 등록돼 있으면 그건 이름으로 취급(아래 분기)
   if (!known.length) { console.error('등록된 URL이 없습니다.\n\n' + USAGE); process.exit(1); }
-  targets = known.map((name) => ({ name, url: sources[name] }));
+  targets = known.map((name) => ({ name, url: sources[name].url, account: accountFlag || sources[name].account }));
 } else {
   for (const name of argv) {
-    const url = sources[name];
+    const url = sources[name]?.url;
     if (!url) {
       console.error(`'${name}' 은 등록되어 있지 않습니다.  등록된 것: ${known.join(', ') || '(없음)'}`);
       console.error(`\n최초 1회만:  pnpm urls "<카테고리 목록URL>" ${name}`);
       process.exit(1);
     }
-    targets.push({ name, url });
+    targets.push({ name, url, account: accountFlag || sources[name].account });
   }
 }
 
@@ -69,17 +76,19 @@ if (!config.drive.rootFolder) {
 // ── 목록 페이지 수집
 // 대상을 사이트별로 묶어, 사이트마다 브라우저를 한 번만 띄워 순차 수집한다.
 // (사이트마다 프로필이 달라서 한 창으로는 두 사이트를 볼 수 없다)
-const bySite = new Map(); // siteId -> { site, targets[] }
+// 계정이 다르면 프로필이 달라 한 창으로 못 본다 → (사이트, 계정) 조합으로 묶는다.
+const bySite = new Map(); // "siteId/account" -> { site, account, targets[] }
 for (const t of targets) {
   const site = siteForUrl(t.url);
-  if (!bySite.has(site.id)) bySite.set(site.id, { site, targets: [] });
-  bySite.get(site.id).targets.push(t);
+  const key = `${site.id}/${t.account || ''}`;
+  if (!bySite.has(key)) bySite.set(key, { site, account: t.account || '', targets: [] });
+  bySite.get(key).targets.push(t);
 }
 
 const collected = []; // { name, items }
-for (const { site, targets: group } of bySite.values()) {
-  if (bySite.size > 1) log(`\n════ ${site.label} ════`);
-  const context = await launchSession({ headless: config.headless, site });
+for (const { site, account, targets: group } of bySite.values()) {
+  if (bySite.size > 1) log(`\n════ ${site.label}${account ? ` (${account})` : ''} ════`);
+  const context = await launchSession({ headless: config.headless, site, account });
   try {
     // 로그인이 필요하면 첫 대상 목록으로 돌아오게 한다 — 최초 등록 때 바로 확인이 된다.
     await ensureLoggedIn(context, { returnTo: group[0].url });

@@ -175,6 +175,27 @@ pnpm shot mimosa                                                           # 캡
 - 글 ID는 URL 경로가 아니라 **`board_id`+`no`** 로 잡는다(`b38-n12`). `/nineview/`·`/nainview/` 두 경로가 같은 글이라 경로로 잡으면 중복되기 때문.
 - 글 안의 영상은 **캡처 대상이 아니다** — 페이지에 보이는 그대로(정지화면)만 남는다.
 
+#### 같은 사이트, 다른 아이디 (`--account`)
+
+탭마다 보이는 콘텐츠가 다른 여러 계정을 쓸 때. **등록할 때 한 번만** 지정하면 그 catalog는 이후 항상 그 계정으로 돈다.
+
+```powershell
+# 두 번째 아이디로 로그인 (프로필이 따로 잡힘)
+pnpm login najuda --account=sub
+
+# 그 계정으로 볼 탭을 등록 — 계정이 data/sources.json 에 함께 기록된다
+pnpm urls "https://najuda.com/nainview/course.php?nv_course_id=6&tab=41" drmroad --account=sub
+
+# 이후엔 --account 를 안 붙여도 알아서 sub 계정으로 돈다
+pnpm urls drmroad
+pnpm shot drmroad
+```
+
+- 프로필·창 제목이 계정별로 갈린다: `.userdata-msedge-najuda-sub` / `REC-AUTOMATION-NAJUDA-SUB`. 두 계정을 **동시에** 돌려도 세션이 안 섞인다.
+- 드라이브 폴더는 catalog 이름 기준이라 탭별로 이미 분리된다. **계정이 다르면 catalog 이름도 다르게** 둘 것 — 같은 이름을 쓰면 서로의 결과를 "이미 완료"로 보고 건너뛴다.
+- 임시로 다른 계정으로 돌려보고 싶으면 `--account=` 를 붙이거나 `.env`/환경변수 `PROFILE` 을 쓴다 (우선순위: `--account` > `PROFILE` > catalog에 기록된 값).
+- 계정 이름은 폴더명이 되므로 영문·숫자·`-`·`_` 만 남는다 (`Sub 2` → `sub-2`).
+
 ### 페이지 캡처 (`pnpm shot`)
 
 영상 대신 **페이지 자체를 PNG로 캡처**하는 별도 모드. catalog는 녹화와 **같은 것을 쓴다**.
@@ -205,6 +226,7 @@ pnpm shot no1-stock
 | `pnpm urls "<URL>" <catalog>` | URL을 이름에 등록(`data/sources.json`) + 갱신 — 최초 1회 |
 | `pnpm urls` | 등록된 이름/URL 목록 보기 |
 | `pnpm login <사이트\|catalog\|URL>` | 그 사이트 프로필에 로그인 창 띄우기 (최초 1회·세션 만료 시). 예: `pnpm login najuda` |
+| `--account=<이름>` | 위 `urls`/`shot`/`start`/`login` 공통 옵션 — 같은 사이트의 다른 아이디. 등록 시 한 번 주면 이후 자동 |
 | `pnpm start [catalog] [reverse]` | catalog의 미완료 녹화 → 드라이브 업로드 (catalog 하나면 이름 생략 가능). `reverse`(=`-r`/`desc`): 아래에서부터 녹화 |
 | `pnpm shot [catalog] [reverse]` | catalog 페이지를 PNG로 캡처 → `<catalog>-shots` 폴더에 업로드. OBS 불필요. 인자 규칙은 `start`와 동일 |
 | `pnpm obs:check [--rec]` | OBS 연결/해상도 확인 (`--rec`: 5초 테스트 녹화) |
@@ -245,6 +267,7 @@ pnpm start no1-stock reverse
 | `RECORD_DIR` | | 로컬 저장 폴더 (기본 `./recordings`) |
 | `CAPTURE_DIR` | | 캡처 저장 폴더 (기본 `./captures`) |
 | `MAX_RECORD_SEC` | | >0이면 그 초수에서 강제 종료(테스트). 운영은 비움 |
+| `PROFILE` | | 계정(프로필) 꼬리표를 전역으로 덮어쓰기. 보통은 `--account=` 나 catalog 기록을 쓰고, 이건 임시 override 용 |
 | `NTFY_TOPIC` | | ntfy 알림 토픽 (비우면 알림 끔) |
 | `GDRIVE_ROOT` | ✔ | 드라이브 루트 폴더명. **없으면 `start`/`shot`/`urls` 실행 거부** |
 | `GOOGLE_OAUTH_CLIENT_ID` | ✔ | 구글 OAuth (drive.file 스코프) |
@@ -274,11 +297,12 @@ pnpm start no1-stock reverse
 video-recorder/
 ├─ .env                      # 설정(비밀값 포함, git 제외)
 ├─ data/catalogs/<이름>.json  # 종류별 작업 큐 [{id,title,url,skip?,done?}]
-├─ data/sources.json         # 이름 → 카테고리 목록 URL (pnpm urls <이름> 용, git 제외)
+├─ data/sources.json         # 이름 → { 목록 URL, 계정 } (pnpm urls <이름> 용, git 제외)
 ├─ recordings/               # 로컬 보관본 <제목>.mkv
 ├─ captures/<catalog>/       # 로컬 캡처본 <제목>.png
 ├─ .userdata-msedge/         # Edge 프로필(네이버 로그인 세션, git 제외)
 ├─ .userdata-msedge-najuda/  # Edge 프로필(나인뷰 로그인 세션, git 제외)
+├─ .userdata-msedge-najuda-sub/  # 〃 두 번째 아이디(--account=sub)
 └─ src/
    ├─ index.js               # 진입점 (pnpm start)
    ├─ capture.js             # 진입점 (pnpm shot)
@@ -308,6 +332,7 @@ video-recorder/
 | 시작 시 로그인 페이지가 뜸 | 세션 만료 → 열린 Edge 창에서 재로그인(네이버는 “로그인 상태 유지” 체크). ntfy로 🔐 알림도 옴. 미리 하려면 `pnpm login <사이트>` |
 | 나인뷰가 자꾸 로그아웃됨 | PHP 세션이라 수명이 짧다. 캡처 시작 전에 `pnpm login najuda` 로 한 번 갱신하고 돌리면 세션 중간에 멈추지 않는다 |
 | 나인뷰 목록이 **20개만** 잡힘 | 페이지네이션(`&page=`)을 못 따라간 것. 목록 URL에 이미 `page=` 가 붙어 있으면 빼고 등록할 것 |
+| 다른 아이디로 등록했는데 **잠긴 글**만 보임 | 그 catalog에 계정이 안 적힌 것. `pnpm urls` 로 등록 목록을 보면 `[계정: sub]` 표시가 있는지 확인. 없으면 `pnpm urls <이름> --account=sub` 로 한 번 갱신 |
 | OBS 녹화가 **검은 화면** | 윈도우 캡처를 `Windows Graphics Capture` + `REC-AUTOMATION`으로. 아니면 화면 캡처로 |
 | 녹화에 **소리 없음/이중음** | 오디오 소스를 응용 프로그램 오디오 캡처 하나만. VB-CABLE 라우팅 확인 |
 | 소리가 **스피커로 들림** | 볼륨 믹서에서 Edge 출력 = `CABLE Input` 인지 확인 |

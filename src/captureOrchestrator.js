@@ -13,17 +13,19 @@ import { openPage, capturePage } from './browser/pageCapture.js';
 import { DriveClient, md5OfFile } from './drive/driveClient.js';
 import { loadCatalog } from './core/catalog.js';
 import { siteForItems } from './sites/index.js';
+import { resolveAccount } from './core/sources.js';
 import { sanitize } from './core/filename.js';
 import { notifyFail, notifyLogin, notifyStopped, notifyCaptured } from './core/notify.js';
 
 export const shotsFolderName = (catalogName) => `${catalogName}-shots`;
 
-export async function run(catalogName, { reverse = false } = {}) {
+export async function run(catalogName, { reverse = false, account = '' } = {}) {
   if (!config.drive.rootFolder) throw new Error('GDRIVE_ROOT 미설정 — .env 에 GDRIVE_ROOT 를 지정하세요.');
   const items = await loadCatalog(catalogName);
   if (!items.length) { log(`catalog '${catalogName}' 이 비어있음. 먼저 pnpm urls 로 채우세요.`); return; }
 
   const site = siteForItems(items); // catalog 항목 URL로 사이트 판정 (프로필·로그인 방식이 갈림)
+  const acct = await resolveAccount(catalogName, account); // 같은 사이트의 어느 아이디로 볼지
   const outDir = path.join(config.captureDir, catalogName);
   await fsp.mkdir(outDir, { recursive: true });
 
@@ -44,8 +46,8 @@ export async function run(catalogName, { reverse = false } = {}) {
   log(`📋 '${catalogName}' 캡처: 총 ${items.length} · 완료 ${doneIds.size} · 남음 ${todo.length}${config.force ? ' · [FORCE]' : ''}${reverse ? ' · [역순]' : ''}`);
   if (!todo.length) { log('할 일 없음.'); return; }
 
-  const context = await launchSession({ headless: config.headless, viewport: config.capture.viewport, site });
-  if (!(await isLoggedIn(context))) await notifyLogin(site.label);
+  const context = await launchSession({ headless: config.headless, viewport: config.capture.viewport, site, account: acct });
+  if (!(await isLoggedIn(context))) await notifyLogin(acct ? `${site.label}(${acct})` : site.label);
   await ensureLoggedIn(context);
 
   const page = context.pages()[0] || (await context.newPage());
