@@ -8,7 +8,7 @@
     "start": "node src/index.js",
     "shot": "node src/capture.js",
     "urls": "node src/list.js",
-    "login": "node src/login.js",
+    "signin": "node src/signin.js",
     "download": "node src/download.js",
     "spike": "node src/spike/observe.js",
     "obs:check": "node src/spike/obs-check.js",

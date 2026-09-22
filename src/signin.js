@@ -1,8 +1,10 @@
 // 로그인 창 — 사이트 프로필에 로그인 세션을 심어둔다. 최초 1회(그리고 세션 만료 시)만 쓴다.
-//   pnpm login najuda                사이트 이름으로
-//   pnpm login mimosa                catalog 이름으로 (그 catalog의 사이트·계정을 자동 판정)
-//   pnpm login "<아무 URL>"          URL의 호스트로 판정
-//   pnpm login najuda --account=sub  같은 사이트의 두 번째 아이디로 (프로필이 따로 잡힌다)
+//   pnpm signin najuda                사이트 이름으로
+//   pnpm signin mimosa                catalog 이름으로 (그 catalog의 사이트·계정을 자동 판정)
+//   pnpm signin "<아무 URL>"          URL의 호스트로 판정
+//   pnpm signin najuda --account=sub  같은 사이트의 두 번째 아이디로 (프로필이 따로 잡힌다)
+//
+// 이름이 'login' 이 아닌 이유: pnpm 내장 명령(레지스트리 로그인)과 겹쳐서 가려진다.
 //
 // 비밀번호는 이 도구가 입력하지 않는다. 열린 창에서 직접 로그인하면 프로필에 저장되고,
 // 이후 pnpm urls / shot / start 가 그 세션을 재사용한다.
@@ -23,7 +25,7 @@ const sources = await loadSources();
 const catalogs = await listCatalogNames();
 
 if (!arg) {
-  console.log('사용법:  pnpm login <사이트|catalog이름|URL> [--account=<이름>]');
+  console.log('사용법:  pnpm signin <사이트|catalog이름|URL> [--account=<이름>]');
   console.log(`\n사이트: ${listSiteIds().join(', ')}`);
   if (catalogs.length) console.log(`catalog: ${catalogs.join(', ')}`);
   process.exit(0);

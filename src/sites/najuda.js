@@ -88,7 +88,7 @@ export default {
   // 안내 화면이 뜨는데, 그걸 그대로 캡처해 올리면 '완료'로 굳어버린다. 차라리 실패로 남긴다.
   assertAccessible(page) {
     const u = page.url();
-    if (/\/login\.php/i.test(u)) throw new Error('로그인 세션 만료 — pnpm login najuda 로 다시 로그인하세요');
+    if (/\/login\.php/i.test(u)) throw new Error('로그인 세션 만료 — pnpm signin najuda 로 다시 로그인하세요');
     if (/school_only=1/i.test(u)) throw new Error('접근 권한 없음(스쿨 수강생 전용)');
   },
 

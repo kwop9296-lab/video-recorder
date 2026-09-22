@@ -105,12 +105,12 @@ pnpm setup:window "https://contents.premium.naver.com/no1/stock/contents/아무�
 
 ### 3') 나인뷰(najuda.com) 로그인 — 나인뷰를 쓸 때만
 ```powershell
-pnpm login najuda
+pnpm signin najuda
 ```
 - 네이버와 **다른 사이트·다른 계정**이라 로그인도 따로 한다. 프로필은 `.userdata-msedge-najuda` 로 분리 저장된다.
 - 창이 뜨면 **직접 아이디/비밀번호 입력**. 이 도구는 비밀번호를 저장하지도 입력하지도 않는다.
 - 로그인이 확인되면 등록된 목록 페이지를 열어준다 — 글이 잠금(🔒) 없이 보이면 정상. 확인 후 Ctrl+C.
-- 나인뷰는 PHP 세션이라 네이버보다 만료가 잦다. 만료되면 `pnpm shot` 이 로그인 대기로 멈추고 ntfy로 🔐 알림이 온다 → `pnpm login najuda` 로 다시 로그인.
+- 나인뷰는 PHP 세션이라 네이버보다 만료가 잦다. 만료되면 `pnpm shot` 이 로그인 대기로 멈추고 ntfy로 🔐 알림이 온다 → `pnpm signin najuda` 로 다시 로그인.
 
 ### 4) OBS 설정
 - **도구 → WebSocket 서버 설정**: 서버 활성화, 포트 `4455`, 비밀번호 설정 → `.env`의 `OBS_WS_PASSWORD`에 입력
@@ -166,7 +166,7 @@ pnpm start no1-stock
 
 **나인뷰(najuda.com)** 도 같은 명령을 쓴다 — 코스 탭 URL을 그대로 등록하면 된다:
 ```powershell
-pnpm login najuda                                                          # 최초 1회
+pnpm signin najuda                                                          # 최초 1회
 pnpm urls "https://najuda.com/nainview/course.php?nv_course_id=6&tab=38" mimosa
 pnpm shot mimosa                                                           # 캡처 (OBS 불필요)
 ```
@@ -181,7 +181,7 @@ pnpm shot mimosa                                                           # 캡
 
 ```powershell
 # 두 번째 아이디로 로그인 (프로필이 따로 잡힘)
-pnpm login najuda --account=sub
+pnpm signin najuda --account=sub
 
 # 그 계정으로 볼 탭을 등록 — 계정이 data/sources.json 에 함께 기록된다
 pnpm urls "https://najuda.com/nainview/course.php?nv_course_id=6&tab=41" drmroad --account=sub
@@ -225,7 +225,7 @@ pnpm shot no1-stock
 | `pnpm urls all` | 등록된 catalog 전부 갱신 (브라우저 1회 실행으로 순차 처리) |
 | `pnpm urls "<URL>" <catalog>` | URL을 이름에 등록(`data/sources.json`) + 갱신 — 최초 1회 |
 | `pnpm urls` | 등록된 이름/URL 목록 보기 |
-| `pnpm login <사이트\|catalog\|URL>` | 그 사이트 프로필에 로그인 창 띄우기 (최초 1회·세션 만료 시). 예: `pnpm login najuda` |
+| `pnpm signin <사이트\|catalog\|URL>` | 그 사이트 프로필에 로그인 창 띄우기 (최초 1회·세션 만료 시). 예: `pnpm signin najuda` |
 | `--account=<이름>` | 위 `urls`/`shot`/`start`/`login` 공통 옵션 — 같은 사이트의 다른 아이디. 등록 시 한 번 주면 이후 자동 |
 | `pnpm start [catalog] [reverse]` | catalog의 미완료 녹화 → 드라이브 업로드 (catalog 하나면 이름 생략 가능). `reverse`(=`-r`/`desc`): 아래에서부터 녹화 |
 | `pnpm shot [catalog] [reverse]` | catalog 페이지를 PNG로 캡처 → `<catalog>-shots` 폴더에 업로드. OBS 불필요. 인자 규칙은 `start`와 동일 |
@@ -307,7 +307,7 @@ video-recorder/
    ├─ index.js               # 진입점 (pnpm start)
    ├─ capture.js             # 진입점 (pnpm shot)
    ├─ list.js                # pnpm urls
-   ├─ login.js               # pnpm login
+   ├─ signin.js              # pnpm signin (로그인 창)
    ├─ sites/                 # 사이트 어댑터 (naver·najuda) — 로그인 판정/목록 수집/콘텐츠 ID
    ├─ orchestrator.js        # 지휘: 미완료 순회→녹화→업로드
    ├─ captureOrchestrator.js # 지휘(캡처): 미완료 순회→PNG 캡처→업로드
@@ -329,8 +329,8 @@ video-recorder/
 | `자동화 브라우저가 이미 실행 중입니다` | 같은 프로필(`.userdata-*`)을 쓰는 Edge가 떠 있다. **녹화/캡처가 도는 중이면 끝난 뒤에** 실행할 것. 아무것도 안 도는데 뜨면(Ctrl+C 로 끊어 남은 유령 프로세스) 같은 명령에 `--kill-browser` 를 붙여 재실행 |
 | `GDRIVE_ROOT 미설정` | `.env`에 `GDRIVE_ROOT` 지정 |
 | `구글 OAuth 자격증명 없음` | `.env`에 `GOOGLE_OAUTH_*` 3개 확인 |
-| 시작 시 로그인 페이지가 뜸 | 세션 만료 → 열린 Edge 창에서 재로그인(네이버는 “로그인 상태 유지” 체크). ntfy로 🔐 알림도 옴. 미리 하려면 `pnpm login <사이트>` |
-| 나인뷰가 자꾸 로그아웃됨 | PHP 세션이라 수명이 짧다. 캡처 시작 전에 `pnpm login najuda` 로 한 번 갱신하고 돌리면 세션 중간에 멈추지 않는다 |
+| 시작 시 로그인 페이지가 뜸 | 세션 만료 → 열린 Edge 창에서 재로그인(네이버는 “로그인 상태 유지” 체크). ntfy로 🔐 알림도 옴. 미리 하려면 `pnpm signin <사이트>` |
+| 나인뷰가 자꾸 로그아웃됨 | PHP 세션이라 수명이 짧다. 캡처 시작 전에 `pnpm signin najuda` 로 한 번 갱신하고 돌리면 세션 중간에 멈추지 않는다 |
 | 나인뷰 목록이 **20개만** 잡힘 | 페이지네이션(`&page=`)을 못 따라간 것. 목록 URL에 이미 `page=` 가 붙어 있으면 빼고 등록할 것 |
 | 다른 아이디로 등록했는데 **잠긴 글**만 보임 | 그 catalog에 계정이 안 적힌 것. `pnpm urls` 로 등록 목록을 보면 `[계정: sub]` 표시가 있는지 확인. 없으면 `pnpm urls <이름> --account=sub` 로 한 번 갱신 |
 | OBS 녹화가 **검은 화면** | 윈도우 캡처를 `Windows Graphics Capture` + `REC-AUTOMATION`으로. 아니면 화면 캡처로 |
