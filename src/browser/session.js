@@ -26,7 +26,8 @@ async function findProfileHolders(userDataDir) {
   if (process.platform !== 'win32') return [];
   const ps = [
     "Get-CimInstance Win32_Process -Filter \"Name='msedge.exe' or Name='chrome.exe'\"",
-    `| Where-Object { $_.CommandLine -like '*${userDataDir.replace(/'/g, "''")}*' }`,
+    // 접두 일치만 보면 .userdata-msedge-najuda 가 -najuda-sub 프로필까지 잡는다 — 경로 뒤가 끝나야 같은 프로필.
+    `| Where-Object { $_.CommandLine -match ([regex]::Escape('${userDataDir.replace(/'/g, "''")}') + '(?![\\w-])') }`,
     '| ForEach-Object { $_.ProcessId }',
   ].join(' ');
   try {
